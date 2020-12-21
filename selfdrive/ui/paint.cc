@@ -425,23 +425,23 @@ static void ui_draw_tpms(UIState *s) {
 static void ui_draw_standstill(UIState *s) {
   UIScene &scene = s->scene;
 
-  int viz_standstill_x = s->scene.viz_rect.x + s->scene.viz_rect.w - 560;
-  int viz_standstill_y = s->scene.viz_rect.y + (bdr_s*1.5) + 160 + 250;
-  
-  int minute = 0;
-  int second = 0;
+  int viz_standstill_x = scene.viz_rect.x + 275;
+  int viz_standstill_y = 108;
 
-  minute = int(scene.pathPlan.standstillElapsedTime / 60);
+  static int minute = 0;
+  int second = 0;
+  
+  if ((int(scene.pathPlan.standstillElapsedTime) % 60) == 0) {
+  	minute++;
+  }
   second = int(scene.pathPlan.standstillElapsedTime) - (minute * 60);
 
   if (scene.standStill) {
     nvgTextAlign(s->vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
-    nvgFontSize(s->vg, 125);
-    nvgFillColor(s->vg, COLOR_ORANGE_ALPHA(240));
-    ui_print(s, viz_standstill_x, viz_standstill_y, "잠시멈춤!");
-    nvgFontSize(s->vg, 150);
-    nvgFillColor(s->vg, COLOR_WHITE_ALPHA(240));
-    ui_print(s, viz_standstill_x, viz_standstill_y+150, "%01d:%02d", minute, second);
+    nvgFontSize(s->vg, 60);
+    nvgFillColor(s->vg, COLOR_ORANGE_ALPHA(230));
+    ui_print(s, viz_standstill_x+625, viz_standstill_y+300, "정차중");
+    
   }
 }
 
@@ -868,12 +868,12 @@ static int bb_ui_draw_measure(UIState *s,  const char* bb_value, const char* bb_
    }
   //print value
   nvgFontFace(s->vg, "sans-semibold");
-  nvgFontSize(s->vg, bb_valueFontSize*2.5);
+  nvgFontSize(s->vg, bb_valueFontSize*1.6);
   nvgFillColor(s->vg, bb_valueColor);
   nvgText(s->vg, bb_x-dx/2, bb_y+ (int)(bb_valueFontSize*2.5)+5, bb_value, NULL);
   //print label
   nvgFontFace(s->vg, "sans-regular");
-  nvgFontSize(s->vg, bb_labelFontSize*2.5);
+  nvgFontSize(s->vg, bb_labelFontSize*1.6);
   nvgFillColor(s->vg, bb_labelColor);
   nvgText(s->vg, bb_x, bb_y + (int)(bb_valueFontSize*2.5)+5 + (int)(bb_labelFontSize*2.5)+5, bb_label, NULL);
   //print uom
@@ -884,7 +884,7 @@ static int bb_ui_draw_measure(UIState *s,  const char* bb_value, const char* bb_
     nvgTranslate(s->vg,rx,ry);
     nvgRotate(s->vg, -1.5708); //-90deg in radians
     nvgFontFace(s->vg, "sans-regular");
-    nvgFontSize(s->vg, (int)(bb_uomFontSize*2.5));
+    nvgFontSize(s->vg, (int)(bb_uomFontSize*1.6));
     nvgFillColor(s->vg, bb_uomColor);
     nvgText(s->vg, 0, 0, bb_uom, NULL);
     nvgRestore(s->vg);
@@ -899,9 +899,9 @@ static void bb_ui_draw_measures_left(UIState *s, int bb_x, int bb_y, int bb_w ) 
   int bb_h = 5;
   NVGcolor lab_color = COLOR_WHITE_ALPHA(200);
   NVGcolor uom_color = COLOR_WHITE_ALPHA(200);
-  int value_fontSize=30*0.8;
-  int label_fontSize=15*0.8;
-  int uom_fontSize = 15*0.8;
+  int value_fontSize=30;
+  int label_fontSize=15;
+  int uom_fontSize = 15;
   int bb_uom_dx =  (int)(bb_w /2 - uom_fontSize*2.5) ;
   //CPU TEMP
     if (true) {
@@ -984,6 +984,7 @@ static void bb_ui_draw_measures_left(UIState *s, int bb_x, int bb_y, int bb_w ) 
         value_fontSize, label_fontSize, uom_fontSize );
     bb_ry = bb_y + bb_h;
   }
+  /*
   //add altitude
   if (scene->gpsAccuracyUblox != 0.00) {
     char val_str[16];
@@ -997,7 +998,7 @@ static void bb_ui_draw_measures_left(UIState *s, int bb_x, int bb_y, int bb_w ) 
         value_fontSize, label_fontSize, uom_fontSize );
     bb_ry = bb_y + bb_h;
   }
-
+  */
   //finally draw the frame
   bb_h += 20;
   nvgBeginPath(s->vg);
@@ -1014,9 +1015,9 @@ static void bb_ui_draw_measures_right(UIState *s, int bb_x, int bb_y, int bb_w )
   int bb_h = 5;
   NVGcolor lab_color = COLOR_WHITE_ALPHA(200);
   NVGcolor uom_color = COLOR_WHITE_ALPHA(200);
-  int value_fontSize=30*0.8;
-  int label_fontSize=15*0.8;
-  int uom_fontSize = 15*0.8;
+  int value_fontSize=30;
+  int label_fontSize=15;
+  int uom_fontSize = 15;
   int bb_uom_dx =  (int)(bb_w /2 - uom_fontSize*2.5) ;
 
   //add visual radar relative distance
@@ -1136,7 +1137,7 @@ static void bb_ui_draw_measures_right(UIState *s, int bb_x, int bb_y, int bb_w )
         value_fontSize, label_fontSize, uom_fontSize );
     bb_ry = bb_y + bb_h;
   }
-
+  /*
   //add steerratio from pathplan
   if (true) {
     char val_str[16];
@@ -1154,7 +1155,7 @@ static void bb_ui_draw_measures_right(UIState *s, int bb_x, int bb_y, int bb_w )
         value_fontSize, label_fontSize, uom_fontSize );
     bb_ry = bb_y + bb_h;
   }
-
+  */
   //finally draw the frame
   bb_h += 20;
   nvgBeginPath(s->vg);
