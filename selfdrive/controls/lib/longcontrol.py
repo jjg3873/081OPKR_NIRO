@@ -25,7 +25,7 @@ def long_control_state_trans(active, long_control_state, v_ego, v_target, v_pid,
                              output_gb, brake_pressed, cruise_standstill, stop, gas_pressed, min_speed_can):
   """Update longitudinal control state machine"""
   stopping_target_speed = min_speed_can + STOPPING_TARGET_SPEED_OFFSET
-  stopping_condition = stop or (v_ego < 2.0 and cruise_standstill) or \
+  stopping_condition = stop or (v_ego < 0.3 and cruise_standstill) or \
                        (v_ego < STOPPING_EGO_SPEED and \
                         ((v_pid < stopping_target_speed and v_target < stopping_target_speed) or
                         brake_pressed))
@@ -151,12 +151,15 @@ class LongControl():
 
       output_gb = self.pid.update(self.v_pid, v_ego_pid, speed=v_ego_pid, deadzone=deadzone, feedforward=a_target, freeze_integrator=prevent_overshoot)
 
-      if hasLead and radarState.leadOne.status and 3 < dRel <= 35 and output_gb < 0 and vRel < 0 and (CS.vEgo*CV.MS_TO_KPH) < 60:
+      if hasLead and radarState.leadOne.status and 3 < dRel <= 35 and output_gb < 0 and vRel < 0 and (CS.vEgo*CV.MS_TO_KPH) <= 65:
         vd_r = (CS.vEgo*CV.MS_TO_KPH)/dRel
-        multiplier = abs(self.v_pid/v_target_future)
-        if vd_r >= 1.4:
+        multiplier = max(abs(self.v_pid/v_target_future), 1)
+        multiplier = min(multiplier, 3)
+        if vd_r >= 1.5:
           output_gb *= multiplier
           output_gb = clip(output_gb, -brake_max, gas_max)
+        else:
+          output_gb *= 1.2
       elif hasLead and radarState.leadOne.status and 7 < dRel < 17 and abs(vRel*3.6) > 4 and output_gb > 0 and (CS.vEgo * CV.MS_TO_KPH) < 25:
         output_gb *= 1.3
         output_gb = clip(output_gb, -brake_max, gas_max)
@@ -181,7 +184,7 @@ class LongControl():
       if hasLead:
         factor = interp(dRel,[2.0,3.0,4.0,5.0,6.0,7.0,8.0], [5,3,1,0.7,0.5,0.3,0.0])
       if not CS.standstill or output_gb > -BRAKE_STOPPING_TARGET:
-        output_gb -= STOPPING_BRAKE_RATE / RATE * factor
+        output_gb -= CP.stoppingBrakeRate / RATE * factor
       output_gb = clip(output_gb, -brake_max, gas_max)
 
       self.reset(CS.vEgo)
@@ -192,7 +195,7 @@ class LongControl():
       if hasLead:
         factor = interp(dRel,[0.0,2.0,3.0,4.0,5.0], [0.0,0.5,0.75,1.0,1000.0])
       if output_gb < -0.2:
-        output_gb += STARTING_BRAKE_RATE / RATE * factor
+        output_gb += CP.startingBrakeRate / RATE * factor
       self.reset(CS.vEgo)
 
     self.last_output_gb = output_gb
