@@ -95,7 +95,7 @@ class LongControl():
     # Update state machine
     output_gb = self.last_output_gb
     if radarState is None:
-      dRel = 200
+      dRel = 120
       vRel = 0
     else:
       dRel = radarState.leadOne.dRel
@@ -162,6 +162,14 @@ class LongControl():
         output_gb = clip(output_gb, -brake_max, gas_max)
       elif hasLead and radarState.leadOne.status and 7 < dRel < 100 and output_gb < 0:
         output_gb *= 1.2
+        
+      elif hasLead and radarState.leadOne.status and (dRel <= ((CS.vEgo * CV.MS_TO_KPH)*0.6)) and vRel < -10 and output_gb > 0 and (CS.vEgo * CV.MS_TO_KPH) > 40:
+        output_gb *= -1
+        output_gb = clip(output_gb, -brake_max, gas_max)
+
+      elif hasLead and radarState.leadOne.status and (dRel <= ((CS.vEgo * CV.MS_TO_KPH)*0.6)) and vRel < -3 and output_gb > 0 and (CS.vEgo * CV.MS_TO_KPH) > 40:
+        output_gb *= -0.5
+        output_gb = clip(output_gb, -brake_max, gas_max)
         
       if prevent_overshoot:
         output_gb = min(output_gb, 0.0)
