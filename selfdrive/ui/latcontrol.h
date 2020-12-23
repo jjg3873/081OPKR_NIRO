@@ -24,26 +24,8 @@ bool control_button_clicked2(int touch_x, int touch_y) {
   return false;
 }
 
-bool control_button_clicked3(int touch_x, int touch_y) {
-  if (touch_x >= 1265 && touch_x <= 1405) {
-    if (touch_y >= 905 && touch_y <= 1045) {
-      return true;
-    }
-  }
-  return false;
-}
-
 bool control_button_clicked4(int touch_x, int touch_y) {
-  if (touch_x >= 1105 && touch_x <= 1245) {
-    if (touch_y >= 905 && touch_y <= 1045) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool control_button_clicked5(int touch_x, int touch_y) {
-  if (touch_x >= 945 && touch_x <= 1085) {
+  if (touch_x >= 1265 && touch_x <= 1405) {
     if (touch_y >= 905 && touch_y <= 1045) {
       return true;
     }
