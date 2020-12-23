@@ -172,7 +172,7 @@ static void draw_control_button4(UIState *s, int touch_x, int touch_y) {
     nvgText(s->vg,btn_xc4,btn_yc,"CAM",NULL);
   }
 }
-
+/*
 static void draw_control_button5(UIState *s, int touch_x, int touch_y) {
   if (s->vision_connected){
     int btn_w = 140;
@@ -199,7 +199,7 @@ static void draw_control_button5(UIState *s, int touch_x, int touch_y) {
     nvgText(s->vg,btn_xc5,btn_yc,"LIM",NULL);
   }
 }
-
+*/
 bool latcontrol( UIState *s, int touch_x, int touch_y ) {
 
   bool touched = false;
@@ -262,7 +262,7 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
     }
     touched = true;
   }
-
+  /*
   if ((control_button_clicked5(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
     if (s->limit_set_speed == false) {
       s->limit_set_speed = true;
@@ -273,6 +273,6 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
     }
     touched = true;
   }
-  
+  */
   return touched;
 }
