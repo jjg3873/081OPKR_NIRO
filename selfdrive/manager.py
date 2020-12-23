@@ -636,7 +636,7 @@ def main():
     ("OpkrLatMode", "0"),
     ("OpkrAccMode", "1"),
     ("LimitSetSpeedCamera", "0"),
-    ("LimitSetSpeedCurv", "0"),
+    ("LimitSetSpeedCurv", "1"),
     ("OpkrLiveSteerRatio", "0"),
     ("OpkrVariableSteerMax", "1"),
     ("OpkrVariableSteerDelta", "0"),

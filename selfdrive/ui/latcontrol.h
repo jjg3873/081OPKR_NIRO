@@ -118,7 +118,7 @@ static void draw_control_button2(UIState *s, int touch_x, int touch_y) {
     }
   }
 }
-
+/*
 static void draw_control_button3(UIState *s, int touch_x, int touch_y) {
   if (s->vision_connected){
     int btn_w = 140;
@@ -145,12 +145,12 @@ static void draw_control_button3(UIState *s, int touch_x, int touch_y) {
     nvgText(s->vg,btn_xc3,btn_yc,"CURV",NULL);
   }
 }
-
+*/
 static void draw_control_button4(UIState *s, int touch_x, int touch_y) {
   if (s->vision_connected){
     int btn_w = 140;
     int btn_h = 140;
-    int btn_x4 = 1920 - btn_w - 675;
+    int btn_x4 = 1920 - btn_w - 515;
     int btn_y = 1080 - btn_h - 35;
     int btn_xc4 = btn_x4 + (btn_w/2);
     int btn_yc = btn_y + (btn_h/2);
@@ -206,7 +206,6 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
   
   draw_control_button1(s, touch_x, touch_y);
   draw_control_button2(s, touch_x, touch_y);
-  draw_control_button3(s, touch_x, touch_y);
   draw_control_button4(s, touch_x, touch_y);
   
   if ((control_button_clicked1(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
@@ -239,7 +238,7 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
     }
     touched = true;
   }
-
+  /*
   if ((control_button_clicked3(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
     if (s->limit_set_speed_curv == false) {
       s->limit_set_speed_curv = true;
@@ -250,6 +249,7 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
     }
     touched = true;
   }
+  */
 
   if ((control_button_clicked4(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
     if (s->limit_set_speed_camera == false) {
