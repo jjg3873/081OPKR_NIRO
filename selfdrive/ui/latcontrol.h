@@ -208,7 +208,7 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
   draw_control_button2(s, touch_x, touch_y);
   draw_control_button3(s, touch_x, touch_y);
   draw_control_button4(s, touch_x, touch_y);
-  draw_control_button5(s, touch_x, touch_y);
+  #draw_control_button5(s, touch_x, touch_y);
 
   if ((control_button_clicked1(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
     s->lat_mode = s->lat_mode + 1;
