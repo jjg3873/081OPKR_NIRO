@@ -1287,6 +1287,7 @@ static void ui_draw_vision_footer(UIState *s) {
   nvgRect(s->vg, scene->viz_rect.x, s->scene.viz_rect.bottom(), scene->viz_rect.w, footer_h);
   ui_draw_vision_face(s);
   ui_draw_vision_map(s);
+  ui_draw_ml_button(s);
   ui_draw_vision_car(s);
 }
 
