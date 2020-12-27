@@ -831,7 +831,7 @@ static void ui_draw_driver_view(UIState *s) {
   const int y = (box_y + box_h - face_size - bdr_s - (bdr_s * 1.5));
   ui_draw_circle_image(s->vg, x, y, face_size-5, s->img_face, scene->dmonitoring_state.getFaceDetected());
 }
-/*
+
 static void ui_draw_ml_button(UIState *s) {
   int btn_w = 140;
   int btn_h = 140;
@@ -861,7 +861,7 @@ static void ui_draw_ml_button(UIState *s) {
     nvgText(s->vg,btn_xc,btn_yc,"ML",NULL);
   }
 }
-*/
+
 //BB START: functions added for the display of various items
 static int bb_ui_draw_measure(UIState *s,  const char* bb_value, const char* bb_uom, const char* bb_label,
     int bb_x, int bb_y, int bb_uom_dx,
