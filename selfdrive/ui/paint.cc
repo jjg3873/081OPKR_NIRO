@@ -204,14 +204,14 @@ static void ui_draw_track(UIState *s, bool is_mpc, track_vertices_data *pvd) {
     // Draw colored MPC track Kegman's
     if (s->scene.steerOverride) {
       track_bg = nvgLinearGradient(s->vg, s->fb_w, s->fb_h, s->fb_w, s->fb_h*.4,
-        nvgRGBA(0, 191, 255, 255), nvgRGBA(0, 95, 128, 50));
+        COLOR_BLACK_ALPHA(200), COLOR_BLACK_ALPHA(20)); //nvgRGBA(0, 191, 255, 255), nvgRGBA(0, 95, 128, 50));
     } else {
-      int torque_scale = (int)fabs(510*(float)s->scene.output_scale);
+      int torque_scale = (int)fabs(255*(float)s->scene.output_scale);
       int red_lvl = fmin(255, torque_scale);
-      int green_lvl = fmin(255, 510-torque_scale);
+      int green_lvl = fmin(255, 255-torque_scale);
       track_bg = nvgLinearGradient(s->vg, s->fb_w, s->fb_h, s->fb_w, s->fb_h*.4,
         nvgRGBA(          red_lvl,            green_lvl,  0, 255),
-        nvgRGBA((int)(0.5*red_lvl), (int)(0.5*green_lvl), 0, 50));
+        nvgRGBA((int)(0.7*red_lvl), (int)(0.7*green_lvl), 0, 50));
     }
   } else {
     // Draw white vision track
@@ -271,13 +271,25 @@ static void update_line_data(UIState *s, const cereal::ModelDataV2::XYZTData::Re
 static void ui_draw_vision_lane_lines(UIState *s) {
   const UIScene *scene = &s->scene;
 
+  float red_lvl = 0.0;
+  float green_lvl = 0.0;
   // paint lanelines
   line_vertices_data *pvd_ll = &s->lane_line_vertices[0];
   for (int ll_idx = 0; ll_idx < 4; ll_idx++) {
     if (s->sm->updated("modelV2")) {
       update_line_data(s, scene->model.getLaneLines()[ll_idx], 0.025*scene->model.getLaneLineProbs()[ll_idx], pvd_ll + ll_idx, scene->max_distance);
     }
-    NVGcolor color = nvgRGBAf(1.0, 1.0, 1.0, scene->lane_line_probs[ll_idx]);
+    red_lvl = 0.0;
+    green_lvl = 0.0;
+    if ( scene->lane_line_probs[ll_idx] > 0.4 ){
+      red_lvl = 1 - (scene->lane_line_probs[ll_idx] - 0.4) * 2.5;
+      green_lvl = 1 ;
+    }
+    else {
+      red_lvl = 1 ;
+      green_lvl = 1 - (0.4 - scene->lane_line_probs[ll_idx]) * 2.5;
+    }
+    NVGcolor color = nvgRGBAf(red_lvl, green_lvl, 0, 1);
     ui_draw_line(s, (pvd_ll + ll_idx)->v, (pvd_ll + ll_idx)->cnt, &color, nullptr);
   }
 
@@ -449,8 +461,8 @@ static void ui_draw_debug(UIState *s)
 {
   UIScene &scene = s->scene;
 
-  int ui_viz_rx = scene.viz_rect.x + 275;
-  int ui_viz_ry = 108;
+  int ui_viz_rx = scene.viz_rect.x + 270;
+  int ui_viz_ry = 100;
   int ui_viz_rx_center = scene.viz_rect.centerX();
   
   nvgTextAlign(s->vg, NVG_ALIGN_LEFT | NVG_ALIGN_BASELINE);
@@ -829,31 +841,33 @@ static void ui_draw_driver_view(UIState *s) {
 }
 
 static void ui_draw_ml_button(UIState *s) {
-  int btn_w = 380;
-  int btn_h = 95;
-  int x = 1920 - (btn_w/2) - 35;
-  int y = 1080 - (btn_h/2) - 35 - 162;
-  int btn_x = x - btn_w / 2; // 1505
-  int btn_y = y - btn_h / 2; // 788
+  int btn_w = 140;
+  int btn_h = 140;
+  int btn_x = 1920 - btn_w - 995;
+  int btn_y = 1080 - btn_h - 35;
+  int btn_xc = btn_x + (btn_w/2);
+  int btn_yc = btn_y + (btn_h/2);
 
   nvgBeginPath(s->vg);
-  nvgRoundedRect(s->vg, btn_x, btn_y, btn_w, btn_h, 15);
-  if (s->scene.mlButtonEnabled) {  // change outline color based on status of button
+  nvgRoundedRect(s->vg, btn_x, btn_y, btn_w, btn_h, 100);
+  if (s->scene.mlButtonEnabled) {
     nvgStrokeColor(s->vg, nvgRGBA(55, 184, 104, 255));
   } else {
-    nvgStrokeColor(s->vg, nvgRGBA(184, 55, 55, 255));
+    nvgStrokeColor(s->vg, nvgRGBA(255,10,10,80));
   }
-  nvgStrokeWidth(s->vg, 12);
+  nvgStrokeWidth(s->vg, 6);
   nvgStroke(s->vg);
 
-  nvgBeginPath(s->vg);  // dark background for readability
-  nvgRoundedRect(s->vg, btn_x, btn_y, btn_w, btn_h, 15);
-  nvgFillColor(s->vg, nvgRGBA(75, 75, 75, 75));
-  nvgFill(s->vg);
-
-  nvgFillColor(s->vg, nvgRGBA(255, 255, 255, 255));
-  nvgFontSize(s->vg, 60*0.8);
-  nvgText(s->vg, x, (y + btn_h / 8)+7, "MODEL LONG", NULL);
+  nvgTextAlign(s->vg, NVG_ALIGN_CENTER | NVG_ALIGN_MIDDLE);
+  nvgFontSize(s->vg, 45);
+  if (s->scene.mlButtonEnabled) {
+    nvgFillColor(s->vg, nvgRGBA(55, 184, 104, 255));
+    nvgFontSize(s->vg, 60);
+    nvgText(s->vg,btn_xc,btn_yc,"ML",NULL);
+  } else {
+    nvgFillColor(s->vg, nvgRGBA(255,255,255,200));
+    nvgText(s->vg,btn_xc,btn_yc,"ML",NULL);
+  }
 }
 
 //BB START: functions added for the display of various items
@@ -979,6 +993,19 @@ static void bb_ui_draw_measures_left(UIState *s, int bb_x, int bb_y, int bb_w ) 
     }
     snprintf(uom_str, sizeof(uom_str), "%d", (s->scene.satelliteCount));
     bb_h +=bb_ui_draw_measure(s,  val_str, uom_str, "GPS 정확도",
+        bb_rx, bb_ry, bb_uom_dx,
+        val_color, lab_color, uom_color,
+        value_fontSize, label_fontSize, uom_fontSize );
+    bb_ry = bb_y + bb_h;
+  }
+  //add direction
+  if (scene->gpsAccuracyUblox != 0.00) {
+    char val_str[16];
+    char uom_str[3];
+    NVGcolor val_color = COLOR_WHITE_ALPHA(200);
+    snprintf(val_str, sizeof(val_str), "%.0f°", (s->scene.bearingUblox));
+    snprintf(uom_str, sizeof(uom_str), "");
+    bb_h +=bb_ui_draw_measure(s,  val_str, uom_str, "주행방향",
         bb_rx, bb_ry, bb_uom_dx,
         val_color, lab_color, uom_color,
         value_fontSize, label_fontSize, uom_fontSize );

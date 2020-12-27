@@ -16,7 +16,6 @@
 #include "ui.hpp"
 #include "paint.hpp"
 
-std::map<std::string, int> LS_TO_IDX = {{"off", 0}, {"audible", 1}, {"silent", 2}};
 std::map<std::string, int> DF_TO_IDX = {{"traffic", 0}, {"relaxed", 1}, {"roadtrip", 2}, {"auto", 3}};
 
 extern volatile sig_atomic_t do_exit;
@@ -48,7 +47,7 @@ void ui_init(UIState *s) {
   read_param(&s->nDebugUi1, "DebugUi1");
   read_param(&s->nDebugUi2, "DebugUi2");
   read_param(&s->nOpkrBlindSpotDetect, "OpkrBlindSpotDetect");
-  read_param(&s->lateral_control, "LateralControlMethod");
+  read_param(&s->lat_control, "LateralControlMethod");
 
   s->fb = framebuffer_init("ui", 0, true, &s->fb_w, &s->fb_h);
   assert(s->fb);
@@ -284,6 +283,9 @@ void update_sockets(UIState *s) {
     auto data2 = sm["gpsLocationExternal"].getGpsLocationExternal();
     s->scene.gpsAccuracyUblox = data2.getAccuracy();
     s->scene.altitudeUblox = data2.getAltitude();
+    s->scene.bearingUblox = data2.getBearing();
+    s->scene.latitudeUblox = data2.getLatitude();
+    s->scene.longitudeUblox = data2.getLongitude();
   }
   if (sm.updated("health")) {
     auto health = sm["health"].getHealth();
@@ -297,13 +299,11 @@ void update_sockets(UIState *s) {
   }
   if (sm.updated("driverState")) {
     scene.driver_state = sm["driverState"].getDriverState();
-    scene.face_prob = scene.driver_state.getFaceProb();
   }
   if (sm.updated("dMonitoringState")) {
     scene.dmonitoring_state = sm["dMonitoringState"].getDMonitoringState();
     scene.is_rhd = scene.dmonitoring_state.getIsRHD();
     scene.frontview = scene.dmonitoring_state.getIsPreview();
-    scene.awareness_status = scene.dmonitoring_state.getAwarenessStatus();
   } else if ((sm.frame - sm.rcv_frame("dMonitoringState")) > UI_FREQ/2) {
     scene.frontview = false;
   }
@@ -428,17 +428,13 @@ void ui_update(UIState *s) {
   if ((s->sm)->frame % (5*UI_FREQ) == 0) {
     read_param(&s->is_metric, "IsMetric");
     read_param(&s->is_OpenpilotViewEnabled, "IsOpenpilotViewEnabled");
-    read_param(&s->nOpkrAutoScreenOff, "OpkrAutoScreenOff");
     read_param(&s->nOpkrUIBrightness, "OpkrUIBrightness");
     read_param(&s->nOpkrUIVolumeBoost, "OpkrUIVolumeBoost");
     read_param(&s->limit_set_speed, "LimitSetSpeed");
     read_param(&s->limit_set_speed_camera, "LimitSetSpeedCamera");
     read_param(&s->limit_set_speed_curv, "LimitSetSpeedCurv");
-    read_param(&s->nDebugUi1, "DebugUi1");
-    read_param(&s->nDebugUi2, "DebugUi2");
-    read_param(&s->nOpkrBlindSpotDetect, "OpkrBlindSpotDetect");
-    read_param(&s->lateral_control, "LateralControlMethod");
-  } else if ((s->sm)->frame % (6*UI_FREQ) == 0) {
+    read_param(&s->lat_control, "LateralControlMethod");
+    } else if ((s->sm)->frame % (6*UI_FREQ) == 0) {
     int param_read = read_param(&s->last_athena_ping, "LastAthenaPingTime");
     if (param_read != 0) { // Failed to read param
       s->scene.athenaStatus = NET_DISCONNECTED;
