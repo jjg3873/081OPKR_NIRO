@@ -48,7 +48,7 @@ static void send_ml(UIState *s, bool enabled) {
   mlStatus.setEnabled(enabled);
   s->pm->send("modelLongButton", msg);
 }
-
+/*
 static bool handle_ml_touch(UIState *s, int touch_x, int touch_y) {
   //mlButton manager
   int xs[2] = {785, 925};
@@ -61,7 +61,7 @@ static bool handle_ml_touch(UIState *s, int touch_x, int touch_y) {
   }
   return false;
 }
-
+*/
 static bool handle_SA_touched(UIState *s, int touch_x, int touch_y) {
   if (s->active_app == cereal::UiLayoutState::App::NONE) {  // if onroad (not settings or home)
     if (s->awake && s->vision_connected && s->status != STATUS_OFFROAD) {  // if car started or debug mode
