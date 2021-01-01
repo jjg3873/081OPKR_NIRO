@@ -1,640 +1,468 @@
+#!/usr/bin/env python3
+
+import time
 import math
-import json
+import overpy
+import socket
+import requests
+import threading
 import numpy as np
-from datetime import datetime
-from common.basedir import BASEDIR
-from common.op_params import opParams
-from selfdrive.config import Conversions as CV
-from common.transformations.coordinates import LocalCoord, geodetic2ecef
+# setup logging
+import logging
+import logging.handlers
+from scipy import spatial
+import selfdrive.crash as crash
+from common.params import Params
+from collections import defaultdict
+import cereal.messaging as messaging
+from selfdrive.version import version, dirty
+from common.transformations.coordinates import geodetic2ecef
+from selfdrive.mapd.mapd_helpers import MAPS_LOOKAHEAD_DISTANCE, Way, circle_through_points, rate_curvature_points
 
-LOOKAHEAD_TIME = 10.
-MAPS_LOOKAHEAD_DISTANCE = 50 * LOOKAHEAD_TIME
+#DEFAULT_SPEEDS_BY_REGION_JSON_FILE = BASEDIR + "/selfdrive/mapd/default_speeds_by_region.json"
+#from selfdrive.mapd import default_speeds_generator
+#default_speeds_generator.main(DEFAULT_SPEEDS_BY_REGION_JSON_FILE)
 
-op_params = opParams()
+# define LoggerThread class to implement logging functionality
+class LoggerThread(threading.Thread):
+    def __init__(self, threadID, name):
+        threading.Thread.__init__(self)
+        self.threadID = threadID
+        self.name = name
+        self.logger = logging.getLogger(name)
+        h = logging.handlers.RotatingFileHandler(str(name)+'-Thread.log', 'a', 10*1024*1024, 5)
+        f = logging.Formatter('%(asctime)s %(processName)-10s %(name)s %(levelname)-8s %(message)s')
+        h.setFormatter(f)
+        self.logger.addHandler(h)
+        self.logger.setLevel(logging.CRITICAL) # set to logging.DEBUG to enable logging
+        # self.logger.setLevel(logging.DEBUG) # set to logging.CRITICAL to disable logging
 
-traffic_lights = op_params.get('traffic_lights')
-traffic_lights_without_direction = op_params.get('traffic_lights_without_direction')
-rolling_stop = op_params.get('rolling_stop')
+    def save_gps_data(self, gps, osm_way_id):
+        try:
+            location = [gps.speed, gps.bearing, gps.latitude, gps.longitude, gps.altitude, gps.accuracy, time.time(), osm_way_id]
+            with open("/data/openpilot/selfdrive/data_collection/gps-data", "a") as f:
+                f.write("{}\n".format(location))
+        except:
+            self.logger.error("Unable to write gps data to external file")
 
-DEFAULT_SPEEDS_JSON_FILE = BASEDIR + "/selfdrive/mapd/default_speeds.json"
-DEFAULT_SPEEDS = {}
-with open(DEFAULT_SPEEDS_JSON_FILE, "rb") as f:
-  DEFAULT_SPEEDS = json.loads(f.read())
+    def run(self):
+        pass # will be overridden in the child class
 
-DEFAULT_SPEEDS_BY_REGION_JSON_FILE = BASEDIR + "/selfdrive/mapd/default_speeds_by_region.json"
-DEFAULT_SPEEDS_BY_REGION = {}
-with open(DEFAULT_SPEEDS_BY_REGION_JSON_FILE, "rb") as f:
-  DEFAULT_SPEEDS_BY_REGION = json.loads(f.read())
+class QueryThread(LoggerThread):
+    def __init__(self, threadID, name, sharedParams={}): # sharedParams is dict of params shared between two threads
+        # invoke parent constructor https://stackoverflow.com/questions/2399307/how-to-invoke-the-super-constructor-in-python
+        LoggerThread.__init__(self, threadID, name)
+        self.sharedParams = sharedParams
+        # memorize some parameters
+        self.OVERPASS_API_LOCAL = "http://192.168.43.1:12345/api/interpreter"
+        socket.setdefaulttimeout(15)
+        self.distance_to_edge = 500
+        self.OVERPASS_API_URL = "https://z.overpass-api.de/api/interpreter"
+        self.OVERPASS_API_URL2 = "https://lz4.overpass-api.de/api/interpreter"
+        self.OVERPASS_HEADERS = {
+            'User-Agent': 'NEOS (comma.ai)',
+            'Accept-Encoding': 'gzip'
+        }
+        self.prev_ecef = None
 
-def rate_curvature_points(p2,p3,curvature2,curvature3):
-  x2, y2, _ = p2
-  x3, y3, _ = p3
-  if abs(curvature3) > abs(curvature2):
-    return abs((curvature3-curvature2)/(np.sqrt((x3-x2)**2+(y3-y2)**2)))
-  else:
-    return 0
-  
-def distance(x0,y0,x1,y1,x2,y2):
-  return abs((x2-x1)*(y1-y0) - (x1-x0)*(y2-y1)) / np.sqrt(np.square(x2-x1) + np.square(y2-y1))
+    def is_connected_to_local(self, timeout=3.0):
+        try:
+            requests.get(self.OVERPASS_API_LOCAL, timeout=timeout)
+            self.logger.debug("connection local active")
+            return True
+        except:
+            self.logger.error("No local server available.")
+            return False
 
-def circle_through_points(p1, p2, p3, force=False, direction=False):
-  """Fits a circle through three points
-  Formulas from: http://www.ambrsoft.com/trigocalc/circle3d.htm"""
-  x1, y1, _ = p1
-  x2, y2, _ = p2
-  x3, y3, _ = p3
+    def is_connected_to_internet(self, timeout=1.0):
+        try:
+            requests.get(self.OVERPASS_API_URL, timeout=timeout)
+            self.logger.debug("connection 1 active")
+            return True
+        except:
+            self.logger.error("No internet connection available.")
+            return False
 
-  A = x1 * (y2 - y3) - y1 * (x2 - x3) + x2 * y3 - x3 * y2
-  B = (x1**2 + y1**2) * (y3 - y2) + (x2**2 + y2**2) * (y1 - y3) + (x3**2 + y3**2) * (y2 - y1)
-  C = (x1**2 + y1**2) * (x2 - x3) + (x2**2 + y2**2) * (x3 - x1) + (x3**2 + y3**2) * (x1 - x2)
-  D = (x1**2 + y1**2) * (x3 * y2 - x2 * y3) + (x2**2 + y2**2) * (x1 * y3 - x3 * y1) + (x3**2 + y3**2) * (x2 * y1 - x1 * y2)
-  try:
-    if abs((y3-y1)*x2-(x3-x1)*y2+x3*y1-y3*x1)/np.sqrt((y3-y1)**2+(x3-x1)**2) > 0.1 or force:
-      if direction:
-        if (x2-x1)*(y3-y1)-(y2-y1)*(x3-x1)>0:
-          return (-B / (2 * A), - C / (2 * A), np.sqrt((B**2 + C**2 - 4 * A * D) / (4 * A**2)))
-        else:
-          return (-B / (2 * A), - C / (2 * A), -np.sqrt((B**2 + C**2 - 4 * A * D) / (4 * A**2)))
-      else:
-        return (-B / (2 * A), - C / (2 * A), np.sqrt((B**2 + C**2 - 4 * A * D) / (4 * A**2)))
-    else:
-      return (-B / (2 * A), - C / (2 * A), 10000)
-  except RuntimeWarning:
-    return x2, y2, 10000
+    def is_connected_to_internet2(self, timeout=1.0):
+        try:
+            requests.get(self.OVERPASS_API_URL2, timeout=timeout)
+            self.logger.debug("connection 2 active")
+            return True
+        except:
+            self.logger.error("No internet connection available.")
+            return False
 
-def parse_speed_unit(max_speed):
-  """Converts a maxspeed string to m/s based on the unit present in the input.
-  OpenStreetMap defaults to kph if no unit is present. """
+    def build_way_query(self, lat, lon, heading, radius=50):
+        """Builds a query to find all highways within a given radius around a point"""
+        a = 111132.954*math.cos(float(lat)/180*3.141592)
+        b = 111132.954 - 559.822 * math.cos( 2 * float(lat)/180*3.141592) + 1.175 * math.cos( 4 * float(lat)/180*3.141592)
+        heading = math.radians(-heading + 90)
+        lat = lat+math.sin(heading)*radius/2/b
+        lon = lon+math.cos(heading)*radius/2/a
+        pos = "  (around:%f,%f,%f)" % (radius, lat, lon)
+        lat_lon = "(%f,%f)" % (lat, lon)
+        q = """(
+        way
+        """ + pos + """
+        [highway][highway!~"^(footway|path|bridleway|steps|cycleway|construction|bus_guideway|escape)$"];
+        >;);out;""" + """is_in""" + lat_lon + """;area._[admin_level~"[24]"];
+        convert area ::id = id(), admin_level = t['admin_level'],
+        name = t['name'], "ISO3166-1:alpha2" = t['ISO3166-1:alpha2'];out;
+        """
+        self.logger.debug("build_way_query : %s" % str(q))
+        return q, lat, lon
 
-  if not max_speed:
-    return None
+    def run(self):
+        self.logger.debug("run method started for thread %s" % self.name)
 
-  conversion = CV.KPH_TO_MS
-  if 'mph' in max_speed:
-    max_speed = max_speed.replace(' mph', '')
-    conversion = CV.MPH_TO_MS
-  try:
-    return float(max_speed) * conversion
-  except ValueError:
-    return None
-
-def parse_speed_tags(tags):
-  """Parses tags on a way to find the maxspeed string"""
-  max_speed = None
-
-  if 'maxspeed' in tags:
-    max_speed = tags['maxspeed']
-
-  if 'maxspeed:conditional' in tags:
-    try:
-      weekday = True
-      max_speed_cond, cond = tags['maxspeed:conditional'].split(' @ ')
-      if cond.find('wet') > -0.5:
-        cond = cond.replace('wet','')
-        cond = cond.replace(' ','')
-        weekday = False
-        #TODO Check if road is wet waybe if wipers are on.
-      cond = cond[1:-1]
-      
-      now = datetime.now()  # TODO: Get time and timezone from gps fix so this will work correctly on replays
-      if cond.find('Mo-Fr') > -0.5:
-        cond = cond.replace('Mo-Fr','')
-        cond = cond.replace(' ','')
-        if now.weekday() > 4:
-          weekday = False
-      if cond.find('Mo-Su') > -0.5:
-        cond = cond.replace('Mo-Su','')
-        cond = cond.replace(' ','')
-      if cond.find('; SH off') > -0.5:
-        cond = cond.replace('; SH off','')
-        cond = cond.replace(' ','')
-      if cond.find('Oct-Apr') > -0.5:
-        if 4 > now.month > 10:
-          weekday = False
-        else:
-          max_speed = max_speed_cond
-      else:
-        start, end = cond.split('-')
-        starthour, startminute = start.split(':')
-        endhour, endminute = end.split(':')
-        start = datetime.strptime(start, "%H:%M").replace(year=now.year, month=now.month, day=now.day)
-        midnight = datetime.strptime("00:00", "%H:%M").replace(year=now.year, month=now.month, day=now.day)
-        end1 = datetime.strptime(end, "%H:%M").replace(year=now.year, month=now.month, day=now.day)
-        if int(endhour) + int(endminute)/60 < int(starthour) + int(startminute)/60:
-          end2 = datetime.strptime(end, "%H:%M").replace(year=now.year, month=now.month, day=now.day+1)
-          if start <= now <= end2 or midnight <= now <= end1 and weekday:
-            max_speed = max_speed_cond
-        else:
-          if start <= now <= end1 and weekday:
-            max_speed = max_speed_cond
-    except ValueError:
-      pass
-
-  if not max_speed and 'source:maxspeed' in tags:
-    max_speed = DEFAULT_SPEEDS.get(tags['source:maxspeed'], None)
-  if not max_speed and 'maxspeed:type' in tags:
-    max_speed = DEFAULT_SPEEDS.get(tags['maxspeed:type'], None)
-
-  max_speed = parse_speed_unit(max_speed)
-  return max_speed
-
-def geocode_maxspeed(tags, location_info):
-  max_speed = None
-  try:
-    geocode_country = location_info.get('country', '')
-    geocode_region = location_info.get('region', '')
-
-    country_rules = DEFAULT_SPEEDS_BY_REGION.get(geocode_country, {})
-    country_defaults = country_rules.get('Default', [])
-    for rule in country_defaults:
-      rule_valid = all(
-        tag_name in tags
-        and tags[tag_name] == value
-        for tag_name, value in rule['tags'].items()
-      )
-      if rule_valid:
-        max_speed = rule['speed']
-        break #stop searching country
-
-    region_rules = country_rules.get(geocode_region, [])
-    for rule in region_rules:
-      rule_valid = all(
-        tag_name in tags
-        and tags[tag_name] == value
-        for tag_name, value in rule['tags'].items()
-      )
-      if rule_valid:
-        max_speed = rule['speed']
-        break #stop searching region
-  except KeyError:
-    pass
-  max_speed = parse_speed_unit(max_speed)
-  return max_speed
-
-class Way:
-  def __init__(self, way, query_results):
-    self.id = way.id
-    self.way = way
-    self.query_results = query_results
-
-    points = list()
-
-    for node in self.way.get_nodes(resolve_missing=False):
-      points.append((float(node.lat), float(node.lon), 0.))
-
-    self.points = np.asarray(points)
-
-  @classmethod
-  def closest(cls, query_results, lat, lon, heading, prev_way=None):
-    if query_results is None:
-      return None
-    else:
-    #  if prev_way is not None and len(prev_way.way.nodes) < 10:
-    #    if prev_way.on_way(lat, lon, heading):
-    #      return prev_way
-    #    else:
-    #      way = prev_way.next_way(heading)
-    #      if way is not None and way.on_way(lat, lon, heading):
-    #        return way
-        
-      results, tree, real_nodes, node_to_way, location_info = query_results
-
-    cur_pos = geodetic2ecef((lat, lon, 0))
-    nodes = tree.query_ball_point(cur_pos, 150)
-
-    # If no nodes within 150m, choose closest one
-    if not nodes:
-      nodes = [tree.query(cur_pos)[1]]
-
-    ways = []
-    for n in nodes:
-      real_node = real_nodes[n]
-      ways += node_to_way[real_node.id]
-    ways = set(ways)
-
-    closest_way = None
-    best_score = None
-    for way in ways:
-      way = Way(way, query_results)
-      # don't consider backward facing roads
-      if 'oneway' in way.way.tags and way.way.tags['oneway'] == 'yes':
-        angle=heading - math.atan2(way.way.nodes[0].lon-way.way.nodes[-1].lon,way.way.nodes[0].lat-way.way.nodes[-1].lat)*180/3.14159265358979 - 180
-        if angle < -180:
-          angle = angle + 360
-        if angle > 180:
-          angle = angle - 360
-        backwards = abs(angle) > 90
-        if backwards:
-          continue
-
-      points = way.points_in_car_frame(lat, lon, heading, True)
-
-      on_way = way.on_way(lat, lon, heading, points)
-      if not on_way:
-        continue
-
-      # Create mask of points in front and behind
-      x = points[:, 0]
-      y = points[:, 1]
-      angles = np.arctan2(y, x)
-      front = np.logical_and((-np.pi / 2) < angles, angles < (np.pi / 2))
-      if all(front):
-        angles[angles==0] = np.pi
-        front = np.logical_and((-np.pi / 2) < angles,angles < (np.pi / 2))
-      behind = np.logical_not(front)
-
-      dists = np.linalg.norm(points, axis=1)
-
-      # Get closest point behind the car
-      dists_behind = np.copy(dists)
-      dists_behind[front] = np.NaN
-      closest_behind = points[np.nanargmin(dists_behind)]
-
-      # Get closest point in front of the car
-      dists_front = np.copy(dists)
-      dists_front[behind] = np.NaN
-      closest_front = points[np.nanargmin(dists_front)]
-
-      # fit line: y = a*x + b
-      x1, y1, _ = closest_behind
-      x2, y2, _ = closest_front
-      a = (y2 - y1) / max((x2 - x1), 1e-5)
-      b = y1 - a * x1
-
-      # With a factor of 60 a 20m offset causes the same error as a 20 degree heading error
-      # (A 20 degree heading offset results in an a of about 1/3)
-      score = abs(a) * (abs(b) + 1) * 3. + abs(b)
-
-      # Prefer same type of road
-      if prev_way is not None:
-        if way.way.tags.get('highway', '') == prev_way.way.tags.get('highway', ''):
-          score *= 0.5
-
-      if closest_way is None or score < best_score:
-        closest_way = way
-        best_score = score
-        
-    if best_score is None:
-      return None
-    
-    # Normal score is < 5
-    if best_score > 50:
-      return None
-
-    return closest_way
-
-  def __str__(self):
-    return "%s %s" % (self.id, self.way.tags)
-
-  def max_speed(self, heading):
-    """Extracts the (conditional) speed limit from a way"""
-    if not self.way:
-      return None
-    angle=heading - math.atan2(self.way.nodes[0].lon-self.way.nodes[-1].lon,self.way.nodes[0].lat-self.way.nodes[-1].lat)*180/3.14159265358979 - 180
-    if angle < -180:
-      angle = angle + 360
-    if angle > 180:
-      angle = angle - 360
-    backwards = abs(angle) > 90
-    if backwards:
-      if 'maxspeed:backward' in self.way.tags:
-        max_speed = self.way.tags['maxspeed:backward']
-        max_speed = parse_speed_unit(max_speed)
-        return max_speed
-    else:
-      if 'maxspeed:forward' in self.way.tags:
-        max_speed = self.way.tags['maxspeed:forward']
-        max_speed = parse_speed_unit(max_speed)
-        return max_speed
-
-    max_speed = parse_speed_tags(self.way.tags)
-    if not max_speed:
-      location_info = self.query_results[4]
-      max_speed = geocode_maxspeed(self.way.tags, location_info)
-
-    return max_speed
-
-  def max_speed_ahead(self, current_speed_limit, lat, lon, heading, lookahead, traffic_status, traffic_confidence, last_not_none_signal):
-    """Look ahead for a max speed"""
-    if not self.way:
-      return None
-
-    speed_ahead = None
-    speed_ahead_dist = None
-    lookahead_ways = 5
-    way = self
-    for i in range(lookahead_ways):
-      way_pts = way.points_in_car_frame(lat, lon, heading, True)
-      #print way_pts
-      # Check current lookahead distance
-      if way_pts[0,0] < 0 and way_pts[-1,0] < 0:
-        break
-      elif way_pts[0,0] < 0:
-        max_dist = np.linalg.norm(way_pts[-1, :])
-      elif way_pts[-1,0] < 0:
-        max_dist = np.linalg.norm(way_pts[0, :])
-      else:
-        max_dist = min(np.linalg.norm(way_pts[1, :]),np.linalg.norm(way_pts[0, :]),np.linalg.norm(way_pts[-1, :]))
-         
-
-      if max_dist > 2 * lookahead:
-        #print "max_dist break"
-        break
-      try:
-        if way.way.tags['junction']=='roundabout' or way.way.tags['junction']=='circular':
-          latmin = 181
-          lonmin = 181
-          latmax = -181
-          lonmax = -181
-          for n in way.way.nodes:
-            lonmax = max(n.lon,lonmax)
-            lonmin = min(n.lon,lonmin)
-            latmax = max(n.lat,latmax)
-            latmin = min(n.lat,latmin)
-          if way.way.nodes[0].id == way.way.nodes[-1].id:
-            a = 111132.954*math.cos(float(latmax+latmin)/360*3.141592)*float(lonmax-lonmin)
-          else:
-            if way.way.nodes[1].id == way.way.nodes[-1].id:
-              circle = [0,0,30]
+        # for now we follow old logic, will be optimized later
+        start = time.time()
+        radius = 3000
+        while True:
+            if time.time() - start > 2.5:
+                print("Mapd QueryThread lagging by: %s" % str(time.time() - start - 1.0))
+            if time.time() - start < 1.5:
+                time.sleep(1.0)
+                continue
             else:
-              circle = circle_through_points([way.way.nodes[0].lat,way.way.nodes[0].lon,1], [way.way.nodes[1].lat,way.way.nodes[1].lon,1], [way.way.nodes[-1].lat,way.way.nodes[-1].lon,1],True)
-            a = 111132.954*math.cos(float(latmax+latmin)/360*3.141592)*float(circle[2])*2
-          speed_ahead = np.sqrt(2.0*a)
-          min_dist = 999.9
-          for w in way_pts:
-            min_dist = min(min_dist, float(np.linalg.norm(w)))
-          speed_ahead_dist = min_dist
-          break
-      except KeyError:
-        pass
-      angle=heading - math.atan2(way.way.nodes[0].lon-way.way.nodes[-1].lon,way.way.nodes[0].lat-way.way.nodes[-1].lat)*180/3.14159265358979 - 180
-      if angle < -180:
-        angle = angle + 360
-      if angle > 180:
-        angle = angle - 360
-      backwards = abs(angle) > 90
-      if backwards:
-        if 'maxspeed:backward' in way.way.tags:
-          spd = way.way.tags['maxspeed:backward']
-          spd = parse_speed_unit(spd)
-          if spd is not None:
-            speed_ahead = spd
-            min_dist = min(np.linalg.norm(way_pts[1, :]),np.linalg.norm(way_pts[0, :]),np.linalg.norm(way_pts[-1, :]))
-            speed_ahead_dist = min_dist
-            break
-      else:
-        if 'maxspeed:forward' in way.way.tags:
-          spd = way.way.tags['maxspeed:forward']
-          spd = parse_speed_unit(spd)
-          if spd is not None:
-            speed_ahead = spd
-            min_dist = min(np.linalg.norm(way_pts[1, :]),np.linalg.norm(way_pts[0, :]),np.linalg.norm(way_pts[-1, :]))
-            speed_ahead_dist = min_dist
-            break
-      if 'maxspeed:none' in way.way.tags:
-        spd = parse_speed_tags(way.way.tags)
-        #print "spd found"
-        #print spd
-        if not spd:
-          location_info = self.query_results[4]
-          spd = geocode_maxspeed(way.way.tags, location_info)
-          #print "spd is actually"
-          #print spd
-        if spd is not None:
-          speed_ahead = spd
-          min_dist = min(np.linalg.norm(way_pts[1, :]),np.linalg.norm(way_pts[0, :]),np.linalg.norm(way_pts[-1, :]))
-          speed_ahead_dist = min_dist
-          #print "slower speed found"
-          #print min_dist
-          break
-      way_pts = way.points_in_car_frame(lat, lon, heading, False)
-      #print(way_pts)
+                start = time.time()
 
-      try:
-        count = 0
-        loop_must_break = False
-        for n in way.way.nodes:
-          if 'highway' in n.tags and n.tags['highway']=='speed_camera':
-            camera_direction = -1
-            car_direction = heading
-            if int(n.tags['direction']) < 0:
-              camera_direction = 360 - abs(int(n.tags['direction']))
-            elif int(n.tags['direction']) >= 0:
-              camera_direction = abs(int(n.tags['direction']))
-            is_opposite = abs(car_direction - camera_direction)
-            if 225 > is_opposite > 135:
-              speed_ahead = int(n.tags['maxspeed']) / 3.6
-              speed_ahead_dist = max(0. , way_pts[count, 0] - 5.0)
-              loop_must_break = True
-              break
-          count += 1
-        if loop_must_break: break
-      except (KeyError, IndexError, ValueError):
-        pass
-      # Find next way
-      way = way.next_way(heading)
-      if not way:
-        #print "no way break"
-        break
+            self.logger.debug("Starting after sleeping for 1 second ...")
+            last_gps = self.sharedParams.get('last_gps', None)
+            self.logger.debug("last_gps = %s" % str(last_gps))
 
-    return speed_ahead, speed_ahead_dist
+            if last_gps is not None:
+                fix_ok = last_gps.flags & 1
+                if not fix_ok:
+                    continue
+            else:
+                continue
 
-  def advisory_max_speed(self):
-    if not self.way:
-      return None
+            last_query_pos = self.sharedParams.get('last_query_pos', None)
+            if last_query_pos is not None:
+                cur_ecef = geodetic2ecef((last_gps.latitude, last_gps.longitude, last_gps.altitude))
+                if self.prev_ecef is None:
+                    self.prev_ecef = geodetic2ecef((last_query_pos.latitude, last_query_pos.longitude, last_query_pos.altitude))
 
-    tags = self.way.tags
-    adv_speed = None
+                dist = np.linalg.norm(cur_ecef - self.prev_ecef)
+                if dist < radius - self.distance_to_edge: #updated when we are close to the edge of the downloaded circle
+                    continue
+                    self.logger.debug("parameters, cur_ecef = %s, prev_ecef = %s, dist=%s" % (str(cur_ecef), str(self.prev_ecef), str(dist)))
 
-    if 'maxspeed:advisory' in tags:
-      adv_speed = tags['maxspeed:advisory']
-      adv_speed = parse_speed_unit(adv_speed)
-    return adv_speed
+                if dist > radius:
+                    query_lock = self.sharedParams.get('query_lock', None)
+                    if query_lock is not None:
+                        query_lock.acquire()
+                        self.sharedParams['cache_valid'] = False
+                        query_lock.release()
+                    else:
+                        self.logger.error("There is no query_lock")
 
-  def on_way(self, lat, lon, heading, points = None):
-    #if len(self.way.nodes) < 10:
-    #  maybe = False
-    #  factor = max(111132.954*math.cos(float(lat)/180*3.141592), 111132.954 - 559.822 * math.cos( 2 * float(lat)/180*3.141592) + 1.175 * math.cos( 4 * float(lat)/180*3.141592))
-    #  for n in range(len(self.way.nodes)-1):
-    #    if factor * distance(lat,lon,float(self.way.nodes[n].lat),float(self.way.nodes[n].lon),float(self.way.nodes[n+1].lat),float(self.way.nodes[n+1].lon)) < 10.0:
-    #      maybe = True 
-    #  if not maybe:
-    #    return False
-    if points is None:
-      points = self.points_in_car_frame(lat, lon, heading, True)
-    x = points[:, 0]
-    return np.min(x) <= 0. and np.max(x) > 0.
+            if last_gps is not None and last_gps.accuracy < 5.0:
+                q, lat, lon = self.build_way_query(last_gps.latitude, last_gps.longitude, last_gps.bearing, radius=radius)
+                try:
+                    if self.is_connected_to_local():
+                        api = overpy.Overpass(url=self.OVERPASS_API_LOCAL)
+                        api.timeout = 15.0
+                        self.distance_to_edge = radius * 3 / 8
+                    elif self.is_connected_to_internet():
+                        api = overpy.Overpass(url=self.OVERPASS_API_URL)
+                        self.logger.error("Using origional Server")
+                        self.distance_to_edge = radius/4
+                    elif self.is_connected_to_internet2():
+                        api = overpy.Overpass(url=self.OVERPASS_API_URL2)
+                        api.timeout = 10.0
+                        self.logger.error("Using backup Server")
+                        self.distance_to_edge = radius/4
+                    else:
+                        continue
+                    new_result = api.query(q)
+                    self.logger.debug("new_result = %s" % str(new_result))
+                    # Build kd-tree
+                    nodes = []
+                    real_nodes = []
+                    node_to_way = defaultdict(list)
+                    location_info = {}
 
-  def closest_point(self, lat, lon, heading, points=None):
-    if points is None:
-      points = self.points_in_car_frame(lat, lon, heading, True)
-    i = np.argmin(np.linalg.norm(points, axis=1))
-    return points[i]
+                    for n in new_result.nodes:
+                        nodes.append((float(n.lat), float(n.lon), 0))
+                        real_nodes.append(n)
 
-  def distance_to_closest_node(self, lat, lon, heading, points=None):
-    if points is None:
-      points = self.points_in_car_frame(lat, lon, heading, True)
-    return np.min(np.linalg.norm(points, axis=1))
+                    for way in new_result.ways:
+                        for n in way.nodes:
+                            node_to_way[n.id].append(way)
 
-  def points_in_car_frame(self, lat, lon, heading, flip):
-    lc = LocalCoord.from_geodetic([lat, lon, 0.])
+                    for area in new_result.areas:
+                        if area.tags.get('admin_level', '') == "2":
+                            location_info['country'] = area.tags.get('ISO3166-1:alpha2', '')
+                        elif area.tags.get('admin_level', '') == "4":
+                            location_info['region'] = area.tags.get('name', '')
 
-    # Build rotation matrix
-    heading = math.radians(-heading + 90)
-    c, s = np.cos(heading), np.sin(heading)
-    rot = np.array([[c, s, 0.], [-s, c, 0.], [0., 0., 1.]])
+                    nodes = np.asarray(nodes)
+                    nodes = geodetic2ecef(nodes)
+                    tree = spatial.KDTree(nodes)
+                    self.logger.debug("query thread, ... %s %s" % (str(nodes), str(tree)))
 
-    # Convert to local coordinates
-    points_carframe = lc.geodetic2ned(self.points).T
+                    # write result
+                    query_lock = self.sharedParams.get('query_lock', None)
+                    if query_lock is not None:
+                        query_lock.acquire()
+                        last_gps_mod = last_gps.as_builder()
+                        last_gps_mod.latitude = lat
+                        last_gps_mod.longitude = lon
+                        last_gps = last_gps_mod.as_reader()
+                        self.sharedParams['last_query_result'] = new_result, tree, real_nodes, node_to_way, location_info
+                        self.prev_ecef = geodetic2ecef((last_gps.latitude, last_gps.longitude, last_gps.altitude))
+                        self.sharedParams['last_query_pos'] = last_gps
+                        self.sharedParams['cache_valid'] = True
+                        query_lock.release()
+                    else:
+                        self.logger.error("There is not query_lock")
 
-    # Rotate with heading of car
-    points_carframe = np.dot(rot, points_carframe[(1, 0, 2), :]).T
-    
-    if points_carframe[-1,0] < points_carframe[0,0] and flip:
-      points_carframe = np.flipud(points_carframe)
-      
-    return points_carframe
+                except Exception as e:
+                    self.logger.error("ERROR :" + str(e))
+                    print(str(e))
+                    query_lock = self.sharedParams.get('query_lock', None)
+                    query_lock.acquire()
+                    self.sharedParams['last_query_result'] = None
+                    query_lock.release()
+            else:
+                query_lock = self.sharedParams.get('query_lock', None)
+                query_lock.acquire()
+                self.sharedParams['last_query_result'] = None
+                query_lock.release()
 
-  def next_way(self, heading):
-    results, tree, real_nodes, node_to_way, location_info = self.query_results
-    #print "way.id"
-    #print self.id
-    #print "node0.id"
-    #print self.way.nodes[0].id
-    #print "node-1.id"
-    #print self.way.nodes[-1].id
-    #print "heading"
-    #print heading
-    angle=heading - math.atan2(self.way.nodes[0].lon-self.way.nodes[-1].lon,self.way.nodes[0].lat-self.way.nodes[-1].lat)*180/3.14159265358979 - 180
-    #print "angle before"
-    #print angle
-    if angle < -180:
-      angle = angle + 360
-    if angle > 180:
-      angle = angle - 360
-    #print "angle"
-    #print angle
-    backwards = abs(angle) > 90
-    #print "backwards"
-    #print backwards
-    if backwards:
-      node = self.way.nodes[0]
-    else:
-      node = self.way.nodes[-1]
+            self.logger.debug("end of one cycle in endless loop ...")
 
-    ways = node_to_way[node.id]
+class MapsdThread(LoggerThread):
+    def __init__(self, threadID, name, sharedParams={}):
+        # invoke parent constructor
+        LoggerThread.__init__(self, threadID, name)
+        self.sharedParams = sharedParams
+        self.pm = messaging.PubMaster(['liveMapData'])
+        self.logger.debug("entered mapsd_thread, ... %s" % ( str(self.pm)))
+    def run(self):
+        self.logger.debug("Entered run method for thread :" + str(self.name))
+        cur_way = None
+        curvature_valid = False
+        curvature = None
+        upcoming_curvature = 0.
+        dist_to_turn = 0.
+        road_points = None
+        max_speed = None
+        max_speed_ahead = None
+        max_speed_ahead_dist = None
+        max_speed_prev = 0
+        start = time.time()
+        while True:
+            if time.time() - start > 2.5:
+                print("Mapd MapsdThread lagging by: %s" % str(time.time() - start - 0.1))
+            if time.time() - start < 1.5:
+                time.sleep(1.0)
+                continue
+            else:
+                start = time.time()
+            self.logger.debug("starting new cycle in endless loop")
+            query_lock = self.sharedParams.get('query_lock', None)
+            query_lock.acquire()
+            gps = self.sharedParams['last_gps']
+            query_lock.release()
+            if gps is None:
+                continue
+            fix_ok = gps.flags & 1
+            self.logger.debug("fix_ok = %s" % str(fix_ok))
 
-    way = None
-    try:
-      # Simple heuristic to find next way
-      ways = [w for w in ways if w.id != self.id]
-      if len(ways) == 1:
-        way = Way(ways[0], self.query_results)
-        #print "only one way found"
-        return way
-      if len(ways) == 2:
-        try:
-          if ways[0].tags['junction']=='roundabout' or ways[0].tags['junction']=='circular':
-            #print ("roundabout found")
-            way = Way(ways[0], self.query_results)
-            return way
-        except (KeyError, IndexError):
-          pass
-        try:
-          if (ways[0].tags['oneway'] == 'yes') and (ways[1].tags['oneway'] == 'yes'):
-            if (ways[0].nodes[0].id == node.id and ways[1].nodes[0].id != node.id) and not (ways[0].nodes[0].id != node.id and ways[1].nodes[0].id == node.id):
-              way = Way(ways[0], self.query_results)
-              return way
-            elif (ways[0].nodes[0].id != node.id and ways[1].nodes[0].id == node.id) and not (ways[0].nodes[0].id == node.id and ways[1].nodes[0].id != node.id):
-              way = Way(ways[1], self.query_results)
-              return way
-        except (KeyError, IndexError):
-          pass
-      ways = [w for w in ways if (w.nodes[0] == node or w.nodes[-1] == node)]
-      if len(ways) == 1:
-        way = Way(ways[0], self.query_results)
-        #print "only one way found"
-        return way
-      # Filter on highway tag
-      acceptable_tags = list()
-      cur_tag = self.way.tags['highway']
-      acceptable_tags.append(cur_tag)
-      if cur_tag == 'motorway_link':
-        acceptable_tags.append('motorway')
-        acceptable_tags.append('trunk')
-        acceptable_tags.append('primary')
-      ways = [w for w in ways if w.tags['highway'] in acceptable_tags]
-      if len(ways) == 1:
-        way = Way(ways[0], self.query_results)
-        #print "only one way found"
-        return way
-      if len(ways) == 2:
-        try:
-          if ways[0].tags['junction']=='roundabout' or ways[0].tags['junction']=='circular':
-            #print ("roundabout found")
-            way = Way(ways[0], self.query_results)
-            return way
-        except (KeyError, IndexError):
-          pass
-        try:
-          if (ways[0].tags['oneway'] == 'yes') and (ways[1].tags['oneway'] == 'yes'):
-            if (ways[0].nodes[0].id == node.id and ways[1].nodes[0].id != node.id) and not (ways[0].nodes[0].id != node.id and ways[1].nodes[0].id == node.id):
-              way = Way(ways[0], self.query_results)
-              return way
-            elif (ways[0].nodes[0].id != node.id and ways[1].nodes[0].id == node.id) and not (ways[0].nodes[0].id == node.id and ways[1].nodes[0].id != node.id):
-              way = Way(ways[1], self.query_results)
-              return way
-        except (KeyError, IndexError):
-          pass
-      # Filter on number of lanes
-      cur_num_lanes = int(self.way.tags['lanes'])
-      if len(ways) > 1:
-        ways_same_lanes = [w for w in ways if int(w.tags['lanes']) == cur_num_lanes]
-        if len(ways_same_lanes) == 1:
-          ways = ways_same_lanes
-      if len(ways) > 1:
-        ways = [w for w in ways if int(w.tags['lanes']) > cur_num_lanes]
-      if len(ways) == 1:
-        way = Way(ways[0], self.query_results)
+            if not fix_ok or self.sharedParams['last_query_result'] is None or not self.sharedParams['cache_valid']:
+                self.logger.debug("fix_ok %s" % fix_ok)
+                self.logger.error("Error in fix_ok logic")
+                cur_way = None
+                curvature = None
+                max_speed_ahead = None
+                max_speed_ahead_dist = None
+                curvature_valid = False
+                upcoming_curvature = 0.
+                dist_to_turn = 0.
+                road_points = None
+                map_valid = False
+            else:
+                map_valid = True
+                lat = gps.latitude
+                lon = gps.longitude
+                heading = gps.bearing
+                speed = gps.speed
 
-    except (KeyError, ValueError):
-      pass
+                query_lock.acquire()
+                cur_way = Way.closest(self.sharedParams['last_query_result'], lat, lon, heading, cur_way)
+                query_lock.release()
 
-    return way
+                if cur_way is not None:
+                    self.logger.debug("cur_way is not None ...")
+                    pnts, curvature_valid = cur_way.get_lookahead(lat, lon, heading, MAPS_LOOKAHEAD_DISTANCE)
+                    if pnts is not None:
+                        xs = pnts[:, 0]
+                        ys = pnts[:, 1]
+                        road_points = [float(x) for x in xs], [float(y) for y in ys]
 
-  def get_lookahead(self, lat, lon, heading, lookahead):
-    pnts = None
-    way = self
-    valid = False
-    
-    for i in range(5):
-      # Get new points and append to list
-      new_pnts = way.points_in_car_frame(lat, lon, heading, True)
+                        if speed < 5:
+                            curvature_valid = False
+                        if curvature_valid and pnts.shape[0] <= 3:
+                            curvature_valid = False
+                    else:
+                        curvature_valid = False
+                        upcoming_curvature = 0.
+                        curvature = None
+                        dist_to_turn = 0.
+                    # The curvature is valid when at least MAPS_LOOKAHEAD_DISTANCE of road is found
+                    if curvature_valid:
+                    # Compute the curvature for each point
+                        with np.errstate(divide='ignore'):
+                            circles = [circle_through_points(*p, direction=True) for p in zip(pnts, pnts[1:], pnts[2:])]
+                            circles = np.asarray(circles)
+                            radii = np.nan_to_num(circles[:, 2])
+                            radii[abs(radii) < 15.] = 10000
 
-      try:
-        if way.way.tags['junction']=='roundabout' or way.way.tags['junction']=='circular':
-          break
-      except KeyError:
-        pass
-      if pnts is None:
-        pnts = new_pnts
-        valid = True
-      else:
-        new_pnts = np.delete(new_pnts,[0,0,0], axis=0)
-        pnts = np.vstack([pnts, new_pnts])
+                            if cur_way.way.tags['highway'] == 'trunk_link'  or cur_way.way.tags['highway'] == 'motorway_link':
+                                radii = radii*1.6 # https://media.springernature.com/lw785/springer-static/image/chp%3A10.1007%2F978-3-658-01689-0_21/MediaObjects/298553_35_De_21_Fig65_HTML.gif
+                            elif cur_way.way.tags['highway'] == 'motorway':
+                                radii = radii*2.8
 
-      # Check current lookahead distance
-      max_dist = np.linalg.norm(pnts[-1, :])
+                            curvature = 1. / radii
+                        rate = [rate_curvature_points(*p) for p in zip(pnts[1:], pnts[2:],curvature[0:],curvature[1:])]
+                        rate = ([0] + rate)
 
-      if max_dist > 2 * lookahead:
-        break
+                        curvature = np.abs(curvature)
+                        curvature = np.multiply(np.minimum(np.multiply(rate,4000)+0.7,1.1),curvature)
+                        # Index of closest point
+                        closest = np.argmin(np.linalg.norm(pnts, axis=1))
+                        dist_to_closest = pnts[closest, 0]  # We can use x distance here since it should be close
 
-      # Find next way
-      startid = way.way.nodes[0].id
-      endid = way.way.nodes[-1].id
-      way = way.next_way(heading)
-      if not way:
-        break
-      if not (way.way.nodes[0].id == startid or way.way.nodes[0].id == endid or way.way.nodes[-1].id == startid or way.way.nodes[-1].id == endid):
-        break
-    return pnts, valid
+                        # Compute distance along path
+                        dists = list()
+                        dists.append(0)
+                        for p, p_prev in zip(pnts, pnts[1:, :]):
+                            dists.append(dists[-1] + np.linalg.norm(p - p_prev))
+                        dists = np.asarray(dists)
+                        dists = dists - dists[closest] + dist_to_closest
+                        dists = dists[1:-1]
+
+                        close_idx = np.logical_and(dists > 0, dists < 500)
+                        dists = dists[close_idx]
+                        curvature = curvature[close_idx]
+
+                        if len(curvature):
+                            curvature = np.nan_to_num(curvature)
+                            upcoming_curvature = np.amax(curvature)
+                            dist_to_turn =np.amin(dists[np.logical_and(curvature >= upcoming_curvature, curvature <= upcoming_curvature)])
+                        else:
+                            upcoming_curvature = 0.
+                            dist_to_turn = 999
+
+            dat = messaging.new_message()
+            dat.init('liveMapData')
+
+            last_gps = self.sharedParams.get('last_gps', None)
+
+            if last_gps is not None:
+                dat.liveMapData.lastGps = last_gps
+
+            if cur_way is not None:
+                dat.liveMapData.wayId = cur_way.id
+                self.sharedParams['osm_way_id'] = cur_way.id
+
+                # Speed limit
+                max_speed = cur_way.max_speed(heading)
+                max_speed_ahead = None
+                max_speed_ahead_dist = None
+                if max_speed is not None:
+                    max_speed_ahead, max_speed_ahead_dist = cur_way.max_speed_ahead(max_speed, lat, lon, heading, MAPS_LOOKAHEAD_DISTANCE)
+                else:
+                    max_speed_ahead, max_speed_ahead_dist = cur_way.max_speed_ahead(speed*1.1, lat, lon, heading, MAPS_LOOKAHEAD_DISTANCE)
+                    # TODO: anticipate T junctions and right and left hand turns based on indicator
+
+                if max_speed_ahead is not None and max_speed_ahead_dist is not None:
+                    dat.liveMapData.speedLimitAheadValid = True
+                    dat.liveMapData.speedLimitAhead = float(max_speed_ahead)
+                    dat.liveMapData.speedLimitAheadDistance = float(max_speed_ahead_dist)
+                if max_speed is not None:
+                    if abs(max_speed - max_speed_prev) > 0.1:
+                        max_speed_prev = max_speed
+
+                # Curvature
+                dat.liveMapData.curvatureValid = curvature_valid
+                dat.liveMapData.curvature = float(upcoming_curvature)
+                dat.liveMapData.distToTurn = float(dist_to_turn)
+                if road_points is not None:
+                    dat.liveMapData.roadX, dat.liveMapData.roadY = road_points
+                if curvature is not None:
+                    dat.liveMapData.roadCurvatureX = [float(x) for x in dists]
+                    dat.liveMapData.roadCurvature = [float(x) for x in curvature]
+            else:
+                self.sharedParams['osm_way_id'] = 0
+            if max_speed is not None and map_valid:
+                dat.liveMapData.speedLimitValid = True
+                dat.liveMapData.speedLimit = max_speed
+
+            dat.liveMapData.mapValid = map_valid
+            self.logger.debug("Sending ... liveMapData ... %s", str(dat))
+            self.pm.send('liveMapData', dat)
+
+class MessagedGPSThread(LoggerThread):
+    def __init__(self, threadID, name, sharedParams={}):
+        # invoke parent constructor
+        LoggerThread.__init__(self, threadID, name)
+        self.sharedParams = sharedParams
+        self.sm = messaging.SubMaster(['gpsLocationExternal'])
+        self.logger.debug("entered messagedGPS_thread, ... %s" % (str(self.sm)))
+    def run(self):
+        self.logger.debug("Entered run method for thread :" + str(self.name))
+        gps = None
+        start = time.time()
+        while True:
+            if time.time() - start > 2.5:
+                print("Mapd MessagedGPSThread lagging by: %s" % str(time.time() - start - 0.1))
+            if time.time() - start < 1.5:
+                time.sleep(1.0)
+                continue
+            else:
+                start = time.time()
+            self.logger.debug("starting new cycle in endless loop")
+            self.sm.update(0)
+            if self.sm.updated['gpsLocationExternal']:
+                gps = self.sm['gpsLocationExternal']
+                self.save_gps_data(gps, self.sharedParams['osm_way_id'])
+
+            query_lock = self.sharedParams.get('query_lock', None)
+
+            query_lock.acquire()
+            self.sharedParams['last_gps'] = gps
+            query_lock.release()
+            self.logger.debug("setting last_gps to %s" % str(gps))
+
+def main():
+    params = Params()
+    dongle_id = params.get("DongleId")
+    crash.bind_user(id=dongle_id)
+    crash.bind_extra(version=version, dirty=dirty, is_eon=True)
+    crash.install()
+
+    # setup shared parameters
+    last_gps = None
+    query_lock = threading.Lock()
+    last_query_result = None
+    last_query_pos = None
+    cache_valid = False
+    osm_way_id = 0
+    sharedParams = {'last_gps' : last_gps, 'query_lock' : query_lock, 'last_query_result' : last_query_result, \
+                    'last_query_pos' : last_query_pos, 'cache_valid' : cache_valid, \
+                    'osm_way_id' : osm_way_id}
+
+    qt = QueryThread(1, "QueryThread", sharedParams=sharedParams)
+    mt = MapsdThread(2, "MapsdThread", sharedParams=sharedParams)
+    mggps = MessagedGPSThread(3, "MessagedGPSThread", sharedParams=sharedParams)
+
+    qt.start()
+    mt.start()
+    mggps.start()
+
+if __name__ == "__main__":
+    main()

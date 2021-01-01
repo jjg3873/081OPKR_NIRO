@@ -164,7 +164,6 @@ env = Environment(
     "#selfdrive/sensord",
     "#selfdrive/ui",
     "#cereal/messaging",
-    "#selfdrive/trafficd",
     "#cereal",
     "#opendbc/can",
   ],
@@ -296,8 +295,7 @@ if arch != "Darwin":
   SConscript(['selfdrive/logcatd/SConscript'])
   SConscript(['selfdrive/sensord/SConscript'])
   SConscript(['selfdrive/clocksd/SConscript'])
-  SConscript(['selfdrive/trafficd/SConscript'])
-
+  
 if arch == "x86_64":
   SConscript(['tools/lib/index_log/SConscript'])
 
