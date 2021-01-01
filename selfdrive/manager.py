@@ -588,7 +588,7 @@ def main():
     ("PutPrebuiltOn", "0"),
     ("FingerprintIssuedFix", "0"),
     ("LdwsCarFix", "0"),
-    ("LateralControlMethod", "2"),
+    ("LateralControlMethod", "0"),
     ("InnerLoopGain", "30"),
     ("OuterLoopGain", "20"),
     ("TimeConstant", "10"),
@@ -637,6 +637,7 @@ def main():
     ("FingerprintTwoSet", "1"),
     ("OpkrLiveTune", "0"),
     ("OpkrEnableMap", "1"),
+    ("OpkrDrivingRecord", "0"),
   ]
 
   # set unset params
