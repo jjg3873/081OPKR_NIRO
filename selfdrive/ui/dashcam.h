@@ -200,7 +200,7 @@ void draw_date_time(UIState *s) {
   // Get local time to display
   char now[50];
   struct tm tm = get_time_struct();
-  snprintf(now,sizeof(now),"%04d/%02d/%02d  %02d:%02d:%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
+  snprintf(now,sizeof(now),"%04d-%02d-%02d  %02d:%02d:%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 
   nvgBeginPath(s->vg);
     nvgRoundedRect(s->vg, rect_x, rect_y, rect_w, rect_h, 0);
