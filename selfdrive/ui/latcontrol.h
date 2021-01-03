@@ -29,10 +29,10 @@ bool control_button_clicked2(int touch_x, int touch_y) {
 bool control_button_clicked4(int touch_x, int touch_y) {
   if (touch_x >= 1265 && touch_x <= 1405) {
     if (touch_y >= 905 && touch_y <= 1045) {
-      return;
+      return true;
     }
   }
-  return true;
+  return false;
 }
 
 bool control_button_screenshot(int touch_x, int touch_y) {
