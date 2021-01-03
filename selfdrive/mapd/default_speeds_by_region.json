@@ -196,7 +196,7 @@
         }
       }, 
       {
-        "speed": "60", 
+        "speed": "50", 
         "tags": {
           "highway": "secondary"
         }
@@ -259,6 +259,18 @@
         "speed": "30", 
         "tags": {
           "highway": "living_street"
+        }
+      },
+      {
+        "speed": "30", 
+        "tags": {
+          "maxspeed": "30"
+        }
+      }, 
+      {
+        "speed": "50", 
+        "tags": {
+          "maxspeed": "50"
         }
       },
       {
