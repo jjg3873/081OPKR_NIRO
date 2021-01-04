@@ -452,7 +452,7 @@ static void ui_draw_standstill(UIState *s) {
     nvgTextAlign(s->vg, NVG_ALIGN_CENTER | NVG_ALIGN_BASELINE);
     nvgFontSize(s->vg, 60);
     nvgFillColor(s->vg, COLOR_ORANGE_ALPHA(230));
-    ui_print(s, viz_standstill_x+658, viz_standstill_y+325, "정차중");
+    ui_print(s, viz_standstill_x+658, viz_standstill_y+340, "정차중");
     
   }
 }
