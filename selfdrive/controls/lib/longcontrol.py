@@ -154,26 +154,18 @@ class LongControl():
       if hasLead and radarState.leadOne.status and 3 < dRel <= 35 and output_gb < 0 and vRel < 0 and (CS.vEgo*CV.MS_TO_KPH) <= 65:
         vd_r = (CS.vEgo*CV.MS_TO_KPH)/dRel
         multiplier = max((self.v_pid/(max(v_target_future, 1))), 1)
-        multiplier = min(multiplier, 4)
+        multiplier = min(multiplier, 5)
         if vd_r >= 1.5:
           output_gb *= multiplier
           output_gb = clip(output_gb, -brake_max, gas_max)
         else:
-          output_gb *= 1.2
+          output_gb *= 1.5
       elif hasLead and radarState.leadOne.status and 7 < dRel < 17 and abs(vRel*3.6) > 4 and output_gb > 0 and (CS.vEgo * CV.MS_TO_KPH) < 25:
         output_gb *= 1.3
         output_gb = clip(output_gb, -brake_max, gas_max)
-      elif hasLead and radarState.leadOne.status and 7 < dRel < 100 and output_gb < 0:
-        output_gb *= 1.2
-        
-      elif hasLead and radarState.leadOne.status and (dRel <= ((CS.vEgo * CV.MS_TO_KPH)*0.6)) and vRel < -10 and output_gb > 0 and (CS.vEgo * CV.MS_TO_KPH) > 40:
-        output_gb *= -1
-        output_gb = clip(output_gb, -brake_max, gas_max)
-
-      elif hasLead and radarState.leadOne.status and (dRel <= ((CS.vEgo * CV.MS_TO_KPH)*0.6)) and vRel < -3 and output_gb > 0 and (CS.vEgo * CV.MS_TO_KPH) > 40:
-        output_gb *= -0.5
-        output_gb = clip(output_gb, -brake_max, gas_max)
-        
+      elif hasLead and radarState.leadOne.status and 4 < dRel < 100 and output_gb < 0:
+        output_gb *= 1.4
+              
       if prevent_overshoot:
         output_gb = min(output_gb, 0.0)
 
@@ -182,7 +174,7 @@ class LongControl():
       # Keep applying brakes until the car is stopped
       factor = 1
       if hasLead:
-        factor = interp(dRel,[2.0,3.0,4.0,5.0,6.0,7.0,8.0], [5,3,1,0.7,0.5,0.3,0.0])
+        factor = interp(dRel,[2.0,3.0,4.0,5.0,6.0,7.0,8.0], [5,3,1,0.7,0.5,0.4,0.3])
       if not CS.standstill or output_gb > -BRAKE_STOPPING_TARGET:
         output_gb -= CP.stoppingBrakeRate / RATE * factor
       output_gb = clip(output_gb, -brake_max, gas_max)
