@@ -100,7 +100,7 @@ class opParams:
                         'rav4TSS2_use_indi': Param(False, bool, 'Enable this to use INDI for lat with your TSS2 RAV4'),
                         'standstill_hack': Param(False, bool, 'Some cars support stop and go, you just need to enable this'),
                         'curvature_factor': Param(1.2, VT.number, 'Multiplier for the curvature slowdown. Increase for less braking.'),
-                        'default_brake_distance': Param(250.0, VT.number, 'Distance in m to start braking for mapped speeds.'),
+                        'default_brake_distance': Param(300.0, VT.number, 'Distance in m to start braking for mapped speeds.'),
                         'eco_mode': Param(False, bool, "Default to eco instead of normal."),
                         'force_pedal': Param(False, bool, "If openpilot isn't recognizing your comma pedal, set this to True"),
                         'limit_rsa': Param(False, bool, "Switch off RSA above rsa_max_speed"),
