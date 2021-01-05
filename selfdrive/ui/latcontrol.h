@@ -8,7 +8,7 @@
 #include "ui.hpp"
 
 
-bool control_button_clicked1(int touch_x, int touch_y) {
+bool control_button_clicked2(int touch_x, int touch_y) {
   if (touch_x >= 1585 && touch_x <= 1725) {
     if (touch_y >= 905 && touch_y <= 1045) {
       return true;
@@ -17,7 +17,7 @@ bool control_button_clicked1(int touch_x, int touch_y) {
   return false;
 }
 
-bool control_button_clicked2(int touch_x, int touch_y) {
+bool control_button_clicked4(int touch_x, int touch_y) {
   if (touch_x >= 1425 && touch_x <= 1565) {
     if (touch_y >= 905 && touch_y <= 1045) {
       return true;
@@ -25,7 +25,7 @@ bool control_button_clicked2(int touch_x, int touch_y) {
   }
   return false;
 }
-
+/*
 bool control_button_clicked4(int touch_x, int touch_y) {
   if (touch_x >= 1265 && touch_x <= 1405) {
     if (touch_y >= 905 && touch_y <= 1045) {
@@ -34,6 +34,7 @@ bool control_button_clicked4(int touch_x, int touch_y) {
   }
   return false;
 }
+*/
 
 bool control_button_screenshot(int touch_x, int touch_y) {
   if (touch_x >= 0 && touch_x <= 800) {
