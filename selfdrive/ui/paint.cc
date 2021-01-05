@@ -835,7 +835,7 @@ static void ui_draw_driver_view(UIState *s) {
 static void ui_draw_ml_button(UIState *s) {
   int btn_w = 140;
   int btn_h = 140;
-  int btn_x = 1920 - btn_w - 675;
+  int btn_x = 1920 - btn_w - 355;
   int btn_y = 1080 - btn_h - 35;
   int btn_xc = btn_x + (btn_w/2);
   int btn_yc = btn_y + (btn_h/2);

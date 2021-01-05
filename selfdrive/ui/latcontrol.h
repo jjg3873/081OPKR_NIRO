@@ -43,7 +43,7 @@ bool control_button_screenshot(int touch_x, int touch_y) {
   }
   return false;
 }
-
+/*
 static void draw_control_button1(UIState *s, int touch_x, int touch_y) {
   if (s->vision_connected){
     int btn_w = 140;
@@ -75,12 +75,12 @@ static void draw_control_button1(UIState *s, int touch_x, int touch_y) {
     }
   }
 }
-
+*/
 static void draw_control_button2(UIState *s, int touch_x, int touch_y) {
   if (s->vision_connected){
     int btn_w = 140;
     int btn_h = 140;
-    int btn_x2 = 1920 - btn_w - 355;
+    int btn_x2 = 1920 - btn_w - 195;
     int btn_y = 1080 - btn_h - 35;
     int btn_xc2 = btn_x2 + (btn_w/2);
     int btn_yc = btn_y + (btn_h/2);
@@ -142,7 +142,7 @@ static void draw_control_button4(UIState *s, int touch_x, int touch_y) {
   if (s->vision_connected){
     int btn_w = 140;
     int btn_h = 140;
-    int btn_x4 = 1920 - btn_w - 515;
+    int btn_x4 = 1920 - btn_w - 355;  
     int btn_y = 1080 - btn_h - 35;
     int btn_xc4 = btn_x4 + (btn_w/2);
     int btn_yc = btn_y + (btn_h/2);
@@ -196,10 +196,9 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
 
   bool touched = false;
   
-  draw_control_button1(s, touch_x, touch_y);
   draw_control_button2(s, touch_x, touch_y);
   draw_control_button4(s, touch_x, touch_y);
-  
+  /*
   if ((control_button_clicked1(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
     s->lat_mode = s->lat_mode + 1;
     if (s->lat_mode > 3) {
@@ -216,6 +215,7 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
     }
     touched = true;
   }
+  */
   if ((control_button_clicked2(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
     s->acc_mode = s->acc_mode + 1;
     if (s->acc_mode > 2) {
