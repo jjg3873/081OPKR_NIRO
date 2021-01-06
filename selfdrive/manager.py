@@ -628,7 +628,7 @@ def main():
     ("OpkrAngleOffsetSelect", "0"),
     ("OpkrCruiseGapSet", "3"),
     ("OpkrLatMode", "0"),
-    ("OpkrAccMode", "2"),
+    ("OpkrAccMode", "1"),
     ("LimitSetSpeedCamera", "0"),
     ("LimitSetSpeedCurv", "0"),
     ("OpkrLiveSteerRatio", "0"),
