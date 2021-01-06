@@ -218,9 +218,9 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
   }
   */
   if ((control_button_clicked2(touch_x,touch_y)) && (s->scene.uilayout_sidebarcollapsed == true)) {
-    s->acc_mode = s->acc_mode + 3;
+    s->acc_mode = s->acc_mode + 1;
     if (s->acc_mode > 2) {
-      s->acc_mode = 2;
+      s->acc_mode = 0;
     }
     if (s->acc_mode == 0) {
       Params().write_db_value("OpkrAccMode", "0", 1);
