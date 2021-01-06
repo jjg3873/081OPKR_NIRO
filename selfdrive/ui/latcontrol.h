@@ -238,7 +238,7 @@ bool latcontrol( UIState *s, int touch_x, int touch_y ) {
       Params().write_db_value("LimitSetSpeedCurv", "1", 1);
     } else if (s->limit_set_speed_curv == true) {
       s->limit_set_speed_curv = false;
-      Params().write_db_value("LimitSetSpeedCurv", "0", 1);
+      Params().write_db_value("LimitSetSpeedCurv", "1", 1);
     }
     touched = true;
   }
