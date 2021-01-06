@@ -152,17 +152,13 @@ class LongControl():
       output_gb = self.pid.update(self.v_pid, v_ego_pid, speed=v_ego_pid, deadzone=deadzone, feedforward=a_target, freeze_integrator=prevent_overshoot)
 
       if hasLead and radarState.leadOne.status and 4 < dRel <= 35 and output_gb < 0 and vRel < 0 and (CS.vEgo*CV.MS_TO_KPH) <= 65:
-        vd_r = (CS.vEgo*CV.MS_TO_KPH)/dRel
         multiplier = max((self.v_pid/(max(v_target_future, 1))), 1)
-        multiplier = min(1.3, multiplier, 4)
-        if vd_r >= 1.5:
-          output_gb *= multiplier
-          output_gb = clip(output_gb, -brake_max, gas_max)
-        else:
-          output_gb *= 1.3
-      elif hasLead and radarState.leadOne.status and 4 < dRel < 100 and output_gb < 0:  
+        multiplier = clip(multiplier, 1.3, 4)
+        output_gb *= multiplier
+        output_gb = clip(output_gb, -brake_max, gas_max)
+      elif hasLead and radarState.leadOne.status and 4 < dRel < 100 and output_gb < 0:
         output_gb *= 1.3
-              
+
       if prevent_overshoot:
         output_gb = min(output_gb, 0.0)
 
@@ -171,7 +167,7 @@ class LongControl():
       # Keep applying brakes until the car is stopped
       factor = 1
       if hasLead:
-        factor = interp(dRel,[2.0,3.0,4.0,5.0,6.0,7.0,8.0], [5,3,1,5.7,0.5,0.3,0.0])
+        factor = interp(dRel,[2.0,3.0,4.0,5.0,6.0,7.0,8.0], [5,3,1.3,0.7,0.5,0.3,0.0])
       if not CS.standstill or output_gb > -BRAKE_STOPPING_TARGET:
         output_gb -= CP.stoppingBrakeRate / RATE * factor
       output_gb = clip(output_gb, -brake_max, gas_max)
@@ -203,7 +199,7 @@ class LongControl():
     else:
       self.long_stat = "---"
 
-    str_log3 = 'LS={:s}  GS={:01.2f}/{:01.2f}  BK={:01.2f}/{:01.2f}  GB={:+04.2f}  TG=P:{:05.2f}/V:{:05.2f}/F:{:05.2f}/A:{:+04.2f}  GS={}'.format(self.long_stat, final_gas, gas_max, abs(final_brake), abs(brake_max), output_gb, self.v_pid, v_target, a_target, CS.gasPressed, CS.brakePressed)
+    str_log3 = 'LS={:s}  GS={:01.2f}/{:01.2f}  BK={:01.2f}/{:01.2f}  GB={:+04.2f}  TG=P:{:05.2f}/V:{:05.2f}/F:{:05.2f}/A:{:+04.2f}  GS={}'.format(self.long_stat, final_gas, gas_max, abs(final_brake), abs(brake_max), output_gb, self.v_pid, v_target, a_target, v_target_future, CS.gasPressed)
     trace1.printf2('{}'.format(str_log3))
 
     return final_gas, final_brake
