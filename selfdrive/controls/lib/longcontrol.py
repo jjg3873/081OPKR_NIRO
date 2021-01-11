@@ -106,9 +106,9 @@ class LongControl():
     else:
       dRel = radarState.leadOne.dRel
       vRel = radarState.leadOne.vRel
-    # 앞차와 거리가 4m이하일때 상태를 강제로 STOP으로 만듬
+    # 앞차와 거리가 3.5m이하일때 상태를 강제로 STOP으로 만듬
     if hasLead:
-      stop = True if (dRel < 4.0 and radarState.leadOne.status) else False
+      stop = True if (dRel < 3.5 and radarState.leadOne.status) else False
     else:
       stop = False
     self.long_control_state = long_control_state_trans(active, self.long_control_state, CS.vEgo,
@@ -163,8 +163,8 @@ class LongControl():
         multiplier = max((self.v_pid/(max(v_target_future, 1))), 1)
         multiplier = clip(multiplier, 1.2, 3.5)
         output_gb *= multiplier
-        #20m 간격 이하에서 거리보다 속도가 2배 이상인경우 조금더 감속 보충
-        if dRel*2 < CS.vEgo*3.6 and dRel <= 20:
+        #20m 간격 이하에서 거리보다 속도가 2.2배 이상인경우 조금더 감속 보충
+        if dRel*2.2 < CS.vEgo*3.6 and dRel <= 20:
           multiplier2 = interp(dRel, [4, 20], [2, 1])
         elif dRel*1.5 < CS.vEgo*3.6 and dRel <= 20:
           multiplier2 = interp(dRel, [4, 20], [1.5, 1])
@@ -184,7 +184,7 @@ class LongControl():
       # Keep applying brakes until the car is stopped
       factor = 1
       if hasLead:
-        factor = interp(dRel,[2.0,3.0,4.0,5.0,6.0,7.0,8.0], [6,3.5,1.5,0.7,0.5,0.3,0.0])
+        factor = interp(dRel,[2.0,3.0,4.0,5.0,6.0,7.0,8.0], [6,3.5,1.5,0.8,0.5,0.3,0.2])
       if not CS.standstill or output_gb > -BRAKE_STOPPING_TARGET:
         output_gb -= CP.stoppingBrakeRate / RATE * factor
       output_gb = clip(output_gb, -brake_max, gas_max)
