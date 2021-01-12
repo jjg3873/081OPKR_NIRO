@@ -163,16 +163,16 @@ class LongControl():
         multiplier = max((self.v_pid/(max(v_target_future, 1))), 1)
         multiplier = clip(multiplier, 1.2, 3.5)
         output_gb *= multiplier
-        #20m 간격 이하에서 거리보다 속도가 2.2배 이상인경우 조금더 감속 보충
-        if dRel*2.2 < CS.vEgo*3.6 and dRel <= 20:
-          multiplier2 = interp(dRel, [4, 20], [2, 1])
+        #20m 간격 이하에서 거리보다 속도가 2배 이상인경우 조금더 감속 보충
+        if dRel*2.0 < CS.vEgo*3.6 and dRel <= 20:
+          multiplier2 = interp(dRel, [4, 20], [2.2, 1])
         elif dRel*1.5 < CS.vEgo*3.6 and dRel <= 20:
-          multiplier2 = interp(dRel, [4, 20], [1.5, 1])
+          multiplier2 = interp(dRel, [4, 20], [1.7, 1])
           output_gb *= multiplier3
         output_gb = clip(output_gb, -brake_max, gas_max)
       # 앞차 감속시 가속하는것을 완화해줌
       elif hasLead and radarState.leadOne.status and 4 < dRel <= 55 and output_gb > 0 and vRel < 0:
-        multiplier3 = interp(abs(vRel*3.6), [0, 1, 2], [1.0, 0.5, 0.0])
+        multiplier3 = interp(abs(vRel*3.6), [0, 1, 3], [1.0, 0.3, -0.3])
         output_gb *= multiplier3
         output_gb = clip(output_gb, -brake_max, gas_max)
 
