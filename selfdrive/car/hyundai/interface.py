@@ -193,9 +193,9 @@ class CarInterface(CarInterfaceBase):
     ret.brakeMaxV = [1.]   # max brake allowed
 
     ret.longitudinalTuning.kpBP = [0., 35.]
-    ret.longitudinalTuning.kpV = [1., 0.5]
+    ret.longitudinalTuning.kpV = [1.7, 0.6]
     ret.longitudinalTuning.kiBP = [0., 35.]
-    ret.longitudinalTuning.kiV = [0.13, 0.07]
+    ret.longitudinalTuning.kiV = [0.25, 0.2]
 
 
     # these cars require a special panda safety mode due to missing counters and checksums in the messages
