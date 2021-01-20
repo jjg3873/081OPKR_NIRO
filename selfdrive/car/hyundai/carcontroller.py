@@ -25,37 +25,9 @@ import common.CTime1000 as tm
 
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 
-# Accel limits
-ACCEL_HYST_GAP = 0.02  # don't change accel command for small oscillations within this value
-ACCEL_MAX = 1.5  # 1.5 m/s2
-ACCEL_MIN = -3.0 # 3   m/s2
-ACCEL_SCALE = max(ACCEL_MAX, -ACCEL_MIN)
-
-def accel_hysteresis(accel, accel_steady):
-
-  # for small accel oscillations within ACCEL_HYST_GAP, don't change the accel command
-  if accel > accel_steady + ACCEL_HYST_GAP:
-    accel_steady = accel - ACCEL_HYST_GAP
-  elif accel < accel_steady - ACCEL_HYST_GAP:
-    accel_steady = accel + ACCEL_HYST_GAP
-  accel = accel_steady
-
-  return accel, accel_steady
-
-def accel_rate_limit(accel_lim, prev_accel_lim):
-
-  if accel_lim > 0:
-    if accel_lim > prev_accel_lim:
-      accel_lim = min(accel_lim, prev_accel_lim + 0.02)
-    else:
-      accel_lim = max(accel_lim, prev_accel_lim - 0.035)
-  else:
-    if accel_lim < prev_accel_lim:
-      accel_lim = max(accel_lim, prev_accel_lim - 0.035)
-    else:
-      accel_lim = min(accel_lim, prev_accel_lim + 0.01)
-
-  return accel_lim
+# TODO: adjust?
+HYUNDAI_ACCEL_LOOKUP_BP = [-1., 0., 2./3.5]
+HYUNDAI_ACCEL_LOOKUP_V = [-3.5, 0., 2.]
 
 def process_hud_alert(enabled, fingerprint, visual_alert, left_lane,
                       right_lane, left_lane_depart, right_lane_depart):
@@ -178,16 +150,7 @@ class CarController():
              set_speed, lead_visible, lead_dist, lead_vrel, lead_yrel, sm):
 
     self.enabled = enabled
-    # gas and brake
-    self.accel_lim_prev = self.accel_lim
-    apply_accel = actuators.gas - actuators.brake
-
-    apply_accel, self.accel_steady = accel_hysteresis(apply_accel, self.accel_steady)
-    apply_accel = clip(apply_accel * ACCEL_SCALE, ACCEL_MIN, ACCEL_MAX)
-
-    self.accel_lim = apply_accel
-    apply_accel = accel_rate_limit(self.accel_lim, self.accel_lim_prev)
-
+    
     param = self.p
 
     self.model_speed, self.model_sum = self.SC.calc_va(sm, CS.out.vEgo)
@@ -310,6 +273,10 @@ class CarController():
 
     self.lfa_available = True if self.lfainFingerprint or self.car_fingerprint in FEATURES["send_lfa_mfa"] else False
 
+    if (frame % 10) == 0:
+      # tester present - w/ no response (keeps radar disabled)
+      can_sends.append([0x7D0, 0, b"\x02\x3E\x80\x00\x00\x00\x00\x00", 0])
+
     can_sends.append(create_lkas11(self.packer, frame, self.car_fingerprint, apply_steer, lkas_active,
                                    CS.lkas11, sys_warning, sys_state, enabled,
                                    left_lane, right_lane,
@@ -356,6 +323,13 @@ class CarController():
     else:
       self.vdiff = 0.
       self.resumebuttoncnt = 0
+
+    if frame % 2 == 0 and self.cp_oplongcontrol:
+      accel = actuators.gas - actuators.brake
+      stopping = accel < 0 and CS.out.vEgo < 0.05
+      if stopping:
+        accel = -1.0
+      apply_accel = interp(accel, HYUNDAI_ACCEL_LOOKUP_BP, HYUNDAI_ACCEL_LOOKUP_V)
 
     if CS.out.vEgo <= 1:
       self.sm.update(0)
