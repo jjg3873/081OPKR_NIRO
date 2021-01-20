@@ -1,7 +1,7 @@
 from numpy import clip
 from common.realtime import DT_CTRL
 from cereal import car, log, messaging
-from common.numpy_fast import interp
+from common.numpy_fast import clip #interp
 from selfdrive.car import apply_std_steer_torque_limits
 from selfdrive.car.hyundai.carstate import GearShifter
 from selfdrive.car.hyundai.hyundaican import create_lkas11, create_clu11, create_lfa_mfa, \
@@ -26,8 +26,8 @@ import common.CTime1000 as tm
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 
 # TODO: adjust?
-HYUNDAI_ACCEL_LOOKUP_BP = [-1., 0., 2./3.5]
-HYUNDAI_ACCEL_LOOKUP_V = [-3.5, 0., 2.]
+#HYUNDAI_ACCEL_LOOKUP_BP = [-1., 0., 2./3.5]
+#HYUNDAI_ACCEL_LOOKUP_V = [-3.5, 0., 2.]
 
 def process_hud_alert(enabled, fingerprint, visual_alert, left_lane,
                       right_lane, left_lane_depart, right_lane_depart):
@@ -328,8 +328,9 @@ class CarController():
       accel = actuators.gas - actuators.brake
       stopping = accel < 0 and CS.out.vEgo < 0.05
       if stopping:
-        accel = -1.0
-      apply_accel = interp(accel, HYUNDAI_ACCEL_LOOKUP_BP, HYUNDAI_ACCEL_LOOKUP_V)
+        accel = -3.5 #-1.0
+      #apply_accel = interp(accel, HYUNDAI_ACCEL_LOOKUP_BP, HYUNDAI_ACCEL_LOOKUP_V)
+      apply_accel = clip(accel, -3.5, 2.0)
 
     if CS.out.vEgo <= 1:
       self.sm.update(0)
