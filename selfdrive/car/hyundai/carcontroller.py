@@ -332,8 +332,7 @@ class CarController():
       self.apply_accel = clip(self.apply_accel, accel_target if accel_target < 0 else 0, accel_target if accel_target > 0 else 0)
       if not enabled:
         self.apply_accel = 0
-      if (accel_target != 0):
-        print(accel_target, self.apply_accel)
+      
       
 
     if CS.out.vEgo <= 1:
@@ -437,12 +436,12 @@ class CarController():
                                       self.usestockscc, CS.CP.radarOffCan, self.scc11cnt, self.sendaccmode))
 
         if CS.brake_check == 1 or CS.mainsw_check == 1:
-          can_sends.append(create_scc12(self.packer, accel_target, self.apply_accel, enabled,
+          can_sends.append(create_scc12(self.packer, accel_target, accel_target, enabled,
                                       self.acc_standstill, CS.out.gasPressed, 1,
                                       CS.out.stockAeb,
                                       CS.scc12, self.usestockscc, CS.CP.radarOffCan, self.scc12cnt))
         else:
-          can_sends.append(create_scc12(self.packer, accel_target, self.apply_accel, enabled,
+          can_sends.append(create_scc12(self.packer, accel_target, accel_target, enabled,
                                       self.acc_standstill, CS.out.gasPressed, CS.out.brakePressed,
                                       CS.out.stockAeb,
                                       CS.scc12, self.usestockscc, CS.CP.radarOffCan, self.scc12cnt))

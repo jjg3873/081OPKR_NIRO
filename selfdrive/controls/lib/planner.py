@@ -392,6 +392,10 @@ class Planner():
     plan_send.plan.hasLead = self.mpc1.prev_lead_status
     plan_send.plan.longitudinalPlanSource = self.longitudinalPlanSource
 
+    a_error = round(self.a_acc - sm['carState'].aEgo, 2)
+    if abs(a_error) > 0.2:
+      print(f"-------- a_error: {a_error} --------")
+
     plan_send.plan.vCurvature = float(v_curvature_map)
     plan_send.plan.decelForTurn = bool(decel_for_turn)
     plan_send.plan.mapValid = True
