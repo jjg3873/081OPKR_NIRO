@@ -1,7 +1,7 @@
 from numpy import clip
 from common.realtime import DT_CTRL
 from cereal import car, log, messaging
-from common.numpy_fast import interp
+from common.numpy_fast import clip #interp
 from selfdrive.car import apply_std_steer_torque_limits
 from selfdrive.car.hyundai.carstate import GearShifter
 from selfdrive.car.hyundai.hyundaican import create_lkas11, create_clu11, create_lfa_mfa, \
@@ -26,8 +26,8 @@ import common.CTime1000 as tm
 VisualAlert = car.CarControl.HUDControl.VisualAlert
 
 # TODO: adjust?
-HYUNDAI_ACCEL_LOOKUP_BP = [-1., 0., 2./3.5]
-HYUNDAI_ACCEL_LOOKUP_V = [-3.5, 0., 2.]
+#HYUNDAI_ACCEL_LOOKUP_BP = [-1., 0., 2./3.5]
+#HYUNDAI_ACCEL_LOOKUP_V = [-3.5, 0., 2.]
 
 def process_hud_alert(enabled, fingerprint, visual_alert, left_lane,
                       right_lane, left_lane_depart, right_lane_depart):
@@ -62,6 +62,7 @@ class CarController():
     self.accel_lim_prev = 0.
     self.accel_lim = 0.
     self.steer_rate_limited = False
+    self.apply_accel = 0
     self.usestockscc = True
     self.lead_visible = False
     self.lead_debounce = 0
@@ -325,11 +326,15 @@ class CarController():
       self.resumebuttoncnt = 0
 
     if frame % 2 == 0 and self.cp_oplongcontrol:
-      accel = actuators.gas - actuators.brake
-      stopping = accel < 0 and CS.out.vEgo < 0.05
-      if stopping:
-        accel = -1.0
-      apply_accel = interp(accel, HYUNDAI_ACCEL_LOOKUP_BP, HYUNDAI_ACCEL_LOOKUP_V)
+      accel_target = clip(actuators.gas - actuators.brake, -3.5, 2.0)
+      self.apply_accel += 0.02 if accel_target > self.apply_accel else -0.02
+      stopping = accel_target < 0 and CS.out.vEgo < 0.05
+      self.apply_accel = clip(self.apply_accel, accel_target if accel_target < 0 else 0, accel_target if accel_target > 0 else 0)
+      if not enabled:
+        self.apply_accel = 0
+      if (accel_target != 0):
+        print(accel_target, self.apply_accel)
+      
 
     if CS.out.vEgo <= 1:
       self.sm.update(0)
@@ -432,12 +437,12 @@ class CarController():
                                       self.usestockscc, CS.CP.radarOffCan, self.scc11cnt, self.sendaccmode))
 
         if CS.brake_check == 1 or CS.mainsw_check == 1:
-          can_sends.append(create_scc12(self.packer, apply_accel, enabled,
+          can_sends.append(create_scc12(self.packer, accel_target, self.apply_accel, enabled,
                                       self.acc_standstill, CS.out.gasPressed, 1,
                                       CS.out.stockAeb,
                                       CS.scc12, self.usestockscc, CS.CP.radarOffCan, self.scc12cnt))
         else:
-          can_sends.append(create_scc12(self.packer, apply_accel, enabled,
+          can_sends.append(create_scc12(self.packer, accel_target, self.apply_accel, enabled,
                                       self.acc_standstill, CS.out.gasPressed, CS.out.brakePressed,
                                       CS.out.stockAeb,
                                       CS.scc12, self.usestockscc, CS.CP.radarOffCan, self.scc12cnt))
