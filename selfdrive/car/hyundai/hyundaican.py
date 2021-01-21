@@ -126,7 +126,7 @@ def create_scc11(packer, enabled, set_speed, lead_visible, lead_dist, lead_vrel,
 
   return packer.make_can_msg("SCC11", 0, values)
 
-def create_scc12(packer, accel_target, self.accel_apply, enabled, standstill, gaspressed, brakepressed, aebcmdact, scc12,
+def create_scc12(packer, accel_target, self.apply_accel, enabled, standstill, gaspressed, brakepressed, aebcmdact, scc12,
                  usestockscc, nosccradar, cnt):
   values = scc12
 
