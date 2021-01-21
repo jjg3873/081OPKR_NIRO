@@ -446,7 +446,7 @@ class CarController():
                                       CS.out.stockAeb,
                                       CS.scc12, self.usestockscc, CS.CP.radarOffCan, self.scc12cnt))
 
-        can_sends.append(create_scc14(self.packer, enabled, self.usestockscc, CS.out.stockAeb, apply_accel,
+        can_sends.append(create_scc14(self.packer, enabled, self.usestockscc, CS.out.stockAeb, self.apply_accel,
                                       CS.scc14, self.objdiststat, CS.out.gasPressed, self.acc_standstill, CS.out.vEgo))
         if CS.CP.fcaBus == -1:
           can_sends.append(create_fca11(self.packer, CS.fca11, self.fca11alivecnt, self.fca11supcnt))
