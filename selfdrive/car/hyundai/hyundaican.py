@@ -133,7 +133,7 @@ def create_scc12(packer, accel_target, accel_apply, enabled, standstill, gaspres
   if not usestockscc and not aebcmdact:
     if enabled and not brakepressed:
       values["ACCMode"] = 2 if gaspressed and (accel_apply > -0.2) else 1
-      if apply_accel < 0.0 and standstill:
+      if self.apply_accel < 0.0 and standstill:
         values["StopReq"] = 1
       values["aReqRaw"] = accel_target if enabled else 0
       values["aReqValue"] = accel_apply if enabled else 0, # stock ramps up at 1.0/s and down at 0.5/s until it reaches aReqRaw
